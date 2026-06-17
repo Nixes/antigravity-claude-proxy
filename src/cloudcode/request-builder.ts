@@ -7,13 +7,13 @@ import {
 } from '../constants.js';
 import { convertAnthropicToGoogle } from '../format/index.js';
 import { deriveSessionId } from './session-manager.js';
-import { StandardRequest, GPart } from '../api/types.js';
+import { StandardRequest, GPart, AnthropicRequest } from '../api/types.js';
 
 export function buildCloudCodeRequestFromStandard(
   standardRequest: StandardRequest,
   projectId: string | null,
   accountEmail: string
-): any {
+): Record<string, unknown> {
   // Deep clone to avoid mutating the original
   const googleRequest: any = JSON.parse(JSON.stringify(standardRequest));
   
@@ -50,10 +50,10 @@ export function buildCloudCodeRequestFromStandard(
 }
 
 export function buildCloudCodeRequest(
-  anthropicRequest: any,
+  anthropicRequest: AnthropicRequest,
   projectId: string | null,
   accountEmail: string
-): any {
+): Record<string, unknown> {
   const standardRequest = convertAnthropicToGoogle(anthropicRequest);
   return buildCloudCodeRequestFromStandard(standardRequest, projectId, accountEmail);
 }

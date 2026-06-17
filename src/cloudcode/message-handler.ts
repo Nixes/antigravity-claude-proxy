@@ -16,17 +16,19 @@ import {
     CAPACITY_BACKOFF_TIERS_MS,
     MAX_CAPACITY_RETRIES,
     BACKOFF_BY_ERROR_TYPE,
-    isThinkingModel
+    BACKOFF_BY_ERROR_TYPE
 } from '../constants.js';
 import { convertGoogleToAnthropic } from '../format/index.js';
 import { isRateLimitError, isAuthError, isAccountForbiddenError, AccountForbiddenError } from '../errors.js';
 import { formatDuration, sleep, isNetworkError, throttledFetch } from '../utils/helpers.js';
 import { logger } from '../utils/logger.js';
+import { convertAnthropicToGoogle, convertRole } from '../format/request-converter.js';
+import { formatAnthropicResponse } from '../api/anthropic.js';
+import { isThinkingModel, getFallbackModel } from '../format/thinking-utils.js';
+import { StandardRequest, StandardResponse, IAccountManager, AnthropicRequest } from '../api/types.js';
 import { parseResetTime } from './rate-limit-parser.js';
 import { buildCloudCodeRequest, buildCloudCodeRequestFromStandard, buildHeaders } from './request-builder.js';
-import { StandardRequest, StandardResponse } from '../api/types.js';
 import { parseThinkingSSEResponse, parseThinkingSSEResponseStandard } from './sse-parser.js';
-import { getFallbackModel } from '../fallback-config.js';
 import {
     getRateLimitBackoff,
     clearRateLimitState,
@@ -51,7 +53,7 @@ import {
  * @returns {Promise<Object>} Anthropic-format response object
  * @throws {Error} If max retries exceeded or no accounts available
  */
-export async function sendMessageStandard(standardRequest: StandardRequest, accountManager: any, fallbackEnabled: boolean = false): Promise<StandardResponse> {
+export async function sendMessageStandard(standardRequest: StandardRequest, accountManager: IAccountManager, fallbackEnabled: boolean = false): Promise<StandardResponse> {
     const model = standardRequest.model;
     const isThinking = isThinkingModel(model);
 
@@ -89,7 +91,7 @@ export async function sendMessageStandard(standardRequest: StandardRequest, acco
                         const fallbackModel = getFallbackModel(model);
                         if (fallbackModel) {
                             logger.warn(`[CloudCode] All accounts exhausted for ${model} (${formatDuration(minWaitMs)} wait). Attempting fallback to ${fallbackModel}`);
-                            const fallbackRequest = { ...standardRequest, model: fallbackModel } as any;
+                            const fallbackRequest = { ...standardRequest, model: fallbackModel };
                             return await sendMessageStandard(fallbackRequest, accountManager, false);
                         }
                     }
@@ -433,7 +435,7 @@ export async function sendMessageStandard(standardRequest: StandardRequest, acco
         const fallbackModel = getFallbackModel(model);
         if (fallbackModel) {
             logger.warn(`[CloudCode] All retries exhausted for ${model}. Attempting fallback to ${fallbackModel}`);
-            const fallbackRequest = { ...standardRequest, model: fallbackModel } as any;
+            const fallbackRequest = { ...standardRequest, model: fallbackModel };
             return await sendMessageStandard(fallbackRequest, accountManager, false);
         }
     }
@@ -441,7 +443,7 @@ export async function sendMessageStandard(standardRequest: StandardRequest, acco
     throw new Error('Max retries exceeded');
 }
 
-export async function sendMessage(anthropicRequest: any, accountManager: any, fallbackEnabled: boolean = false): Promise<any> {
+export async function sendMessage(anthropicRequest: AnthropicRequest, accountManager: IAccountManager, fallbackEnabled: boolean = false): Promise<Record<string, unknown>> {
     const model = anthropicRequest.model;
     const isThinking = isThinkingModel(model);
 

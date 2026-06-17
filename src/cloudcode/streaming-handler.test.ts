@@ -120,13 +120,13 @@ describe('sendMessageStreamStandard', () => {
     };
     throttledFetch.mockResolvedValue(makeOkSseResponse([googleChunk]));
 
-    const chunks: any[] = [];
+    const chunks: Array<StandardStreamChunk> = [];
     let threw: Error | null = null;
     try {
       for await (const chunk of sendMessageStreamStandard(makeStandardRequest(), makeAccountManager(), false)) {
         chunks.push(chunk);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       threw = e;
     }
 
@@ -151,7 +151,7 @@ describe('sendMessageStreamStandard', () => {
     };
     throttledFetch.mockResolvedValue(makeOkSseResponse([googleChunk]));
 
-    const chunks: any[] = [];
+    const chunks: Array<StandardStreamChunk> = [];
     for await (const chunk of sendMessageStreamStandard(makeStandardRequest(), makeAccountManager(), false)) {
       chunks.push(chunk);
     }
@@ -169,7 +169,7 @@ describe('sendMessageStreamStandard', () => {
     };
     throttledFetch.mockResolvedValue(makeOkSseResponse([chunk1, chunk2]));
 
-    const chunks: any[] = [];
+    const chunks: Array<StandardStreamChunk> = [];
     for await (const chunk of sendMessageStreamStandard(makeStandardRequest(), makeAccountManager(), false)) {
       chunks.push(chunk);
     }
@@ -202,7 +202,7 @@ describe('sendMessageStreamStandard', () => {
     let thrownError: Error | null = null;
     try {
       for await (const _ of sendMessageStreamStandard(makeStandardRequest(), makeAccountManager(), false)) { /* drain */ }
-    } catch (e: any) {
+    } catch (e: unknown) {
       thrownError = e;
     }
 
@@ -242,7 +242,7 @@ describe('sendMessageStreamStandard', () => {
       }),
     });
 
-    const chunks: any[] = [];
+    const chunks: Array<StandardStreamChunk> = [];
     for await (const chunk of sendMessageStreamStandard(makeStandardRequest(), makeAccountManager(), false)) {
       chunks.push(chunk);
     }

@@ -23,7 +23,7 @@ import { formatDuration, sleep, isNetworkError, throttledFetch } from '../utils/
 import { logger } from '../utils/logger.js';
 import { parseResetTime } from './rate-limit-parser.js';
 import { buildCloudCodeRequest, buildCloudCodeRequestFromStandard, buildHeaders } from './request-builder.js';
-import { StandardRequest, StandardStreamChunk } from '../api/types.js';
+import { StandardRequest, StandardStreamChunk, IAccountManager, AnthropicRequest } from '../api/types.js';
 import { streamSSEResponse } from './sse-streamer.js';
 import { getFallbackModel } from '../fallback-config.js';
 import {
@@ -51,7 +51,7 @@ import crypto from 'crypto';
  * @yields {Object} Anthropic-format SSE events (message_start, content_block_start, content_block_delta, etc.)
  * @throws {Error} If max retries exceeded or no accounts available
  */
-export async function* sendMessageStreamStandard(standardRequest: StandardRequest, accountManager: any, fallbackEnabled = false): AsyncGenerator<StandardStreamChunk, void, unknown> {
+export async function* sendMessageStreamStandard(standardRequest: StandardRequest, accountManager: IAccountManager, fallbackEnabled = false): AsyncGenerator<StandardStreamChunk, void, unknown> {
     const model = standardRequest.model;
 
     // Retry loop with account failover
@@ -463,7 +463,7 @@ export async function* sendMessageStreamStandard(standardRequest: StandardReques
     throw new Error('Max retries exceeded');
 }
 
-export async function* sendMessageStream(anthropicRequest: any, accountManager: any, fallbackEnabled = false): AsyncGenerator<any, void, unknown> {
+export async function* sendMessageStream(anthropicRequest: AnthropicRequest, accountManager: IAccountManager, fallbackEnabled = false): AsyncGenerator<Record<string, unknown> | string, void, unknown> {
     const model = anthropicRequest.model;
 
     // Retry loop with account failover

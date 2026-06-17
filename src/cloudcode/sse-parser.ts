@@ -16,7 +16,7 @@ import { logger } from '../utils/logger.js';
  * @param {string} originalModel - The original model name
  * @returns {Promise<Object>} Anthropic-format response object
  */
-export async function parseThinkingSSEResponseStandard(response: any): Promise<any> {
+export async function parseThinkingSSEResponseStandard(response: Response): Promise<StandardResponse> {
 let accumulatedThinkingText = '';
     let accumulatedThinkingSignature = '';
     let accumulatedText = '';
@@ -121,7 +121,7 @@ let accumulatedThinkingText = '';
     return accumulatedResponse;
 }
 
-export async function parseThinkingSSEResponse(response: any, originalModel: string): Promise<any> {
+export async function parseThinkingSSEResponse(response: Response, originalModel: string): Promise<Record<string, unknown>> {
     let accumulatedThinkingText = '';
     let accumulatedThinkingSignature = '';
     let accumulatedText = '';

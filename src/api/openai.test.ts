@@ -229,75 +229,75 @@ describe('parseOpenAIRequest', () => {
 describe('formatOpenAIResponse', () => {
   it('maps a single text part to choices[0].message.content string', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ text: 'hello' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).choices[0].message.content).toBe('hello');
-    expect((res as any).choices[0].message.role).toBe('assistant');
+    expect(res.choices[0].message.content).toBe('hello');
+    expect(res.choices[0].message.role).toBe('assistant');
   });
 
   it('concatenates multiple text parts into a single content string', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ text: 'hello ' }, { text: 'world' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).choices[0].message.content).toBe('hello world');
+    expect(res.choices[0].message.content).toBe('hello world');
   });
 
   it('maps a functionCall part to choices[0].message.tool_calls with stringified arguments', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ functionCall: { name: 'f1', args: { a: 1 } } }] }, finishReason: 'TOOL_USE' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).choices[0].message.tool_calls).toHaveLength(1);
-    expect((res as any).choices[0].message.tool_calls[0].function.name).toBe('f1');
-    expect((res as any).choices[0].message.tool_calls[0].function.arguments).toBe('{"a":1}');
+    expect(res.choices[0].message.tool_calls).toHaveLength(1);
+    expect(res.choices[0].message.tool_calls[0].function.name).toBe('f1');
+    expect(res.choices[0].message.tool_calls[0].function.arguments).toBe('{"a":1}');
   });
 
   it('maps multiple functionCall parts to multiple tool_calls entries', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ functionCall: { name: 'f1', args: {} } }, { functionCall: { name: 'f2', args: {} } }] }, finishReason: 'TOOL_USE' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).choices[0].message.tool_calls).toHaveLength(2);
+    expect(res.choices[0].message.tool_calls).toHaveLength(2);
   });
 
   it('sets content and tool_calls when both text and functionCall parts are present', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ text: 'thinking...' }, { functionCall: { name: 'f1', args: {} } }] }, finishReason: 'TOOL_USE' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).choices[0].message.content).toBe('thinking...');
-    expect((res as any).choices[0].message.tool_calls).toHaveLength(1);
+    expect(res.choices[0].message.content).toBe('thinking...');
+    expect(res.choices[0].message.tool_calls).toHaveLength(1);
   });
 
   it('sets finish_reason "stop" for finishReason STOP', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ text: 'hi' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).choices[0].finish_reason).toBe('stop');
+    expect(res.choices[0].finish_reason).toBe('stop');
   });
 
   it('sets finish_reason "length" for finishReason MAX_TOKENS', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ text: 'hi' }] }, finishReason: 'MAX_TOKENS' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).choices[0].finish_reason).toBe('length');
+    expect(res.choices[0].finish_reason).toBe('length');
   });
 
   it('sets finish_reason "tool_calls" for finishReason TOOL_USE', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ text: 'hi' }] }, finishReason: 'TOOL_USE' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).choices[0].finish_reason).toBe('tool_calls');
+    expect(res.choices[0].finish_reason).toBe('tool_calls');
   });
 
   it('infers finish_reason "tool_calls" when functionCall parts are present and finishReason is absent', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ functionCall: { name: 'f1', args: {} } }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
     // Function calls override the STOP
-    expect((res as any).choices[0].finish_reason).toBe('tool_calls');
+    expect(res.choices[0].finish_reason).toBe('tool_calls');
   });
 
   it('maps usageMetadata to prompt_tokens, completion_tokens, total_tokens', () => {
     const res = formatOpenAIResponse({ candidates: [{ content: { parts: [] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).usage.prompt_tokens).toBe(10);
-    expect((res as any).usage.completion_tokens).toBe(5);
-    expect((res as any).usage.total_tokens).toBe(15);
+    expect(res.usage.prompt_tokens).toBe(10);
+    expect(res.usage.completion_tokens).toBe(5);
+    expect(res.usage.total_tokens).toBe(15);
   });
 
   it('returns a safe empty response for an empty candidates array', () => {
     const res = formatOpenAIResponse({ candidates: [], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).choices).toHaveLength(0);
-    expect((res as any).usage.prompt_tokens).toBe(0);
+    expect(res.choices).toHaveLength(0);
+    expect(res.usage.prompt_tokens).toBe(0);
   });
 
   it('sets object field to "chat.completion"', () => {
     const res = formatOpenAIResponse({ candidates: [], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).object).toBe('chat.completion');
+    expect(res.object).toBe('chat.completion');
   });
 
   it('generates an id prefixed with "chatcmpl-"', () => {
     const res = formatOpenAIResponse({ candidates: [], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect((res as any).id.startsWith('chatcmpl-')).toBe(true);
+    expect(res.id.startsWith('chatcmpl-')).toBe(true);
   });
 });
 
@@ -412,7 +412,7 @@ describe('OpenAI spec compliance regressions', () => {
           usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
         },
         'test-model',
-      ) as any;
+      ) as StandardStreamChunk;
 
       expect(res.choices[0].message.content).toBeNull();
       expect(res.choices[0].message.tool_calls).toHaveLength(1);
@@ -436,7 +436,7 @@ describe('OpenAI spec compliance regressions', () => {
           usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
         },
         'test-model',
-      ) as any;
+      ) as StandardStreamChunk;
 
       expect(res.choices[0].message.content).toBe('thinking out loud...');
       expect(res.choices[0].message.tool_calls).toHaveLength(1);
@@ -495,8 +495,8 @@ describe('OpenAI spec compliance regressions', () => {
       const dataLines = res.split('\n\n').filter(l => l.startsWith('data: '));
       const parsed = dataLines.map(l => JSON.parse(l.replace('data: ', '')));
 
-      const ids = parsed.map((p: any) => p.id);
-      const timestamps = parsed.map((p: any) => p.created);
+      const ids = parsed.map((p: OpenAIResponse) => p.id);
+      const timestamps = parsed.map((p: OpenAIResponse) => p.created);
 
       expect(new Set(ids).size).toBe(1);
       expect(ids[0]).toBe('chatcmpl-regression');

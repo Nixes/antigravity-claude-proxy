@@ -58,7 +58,7 @@ describe('buildCloudCodeRequestFromStandard', () => {
       model: 'test-model',
       contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
       generationConfig: { temperature: 0.5 },
-      tools: [{ functionDeclarations: [{ name: 'f1' }] }] as any
+      tools: [{ functionDeclarations: [{ name: 'f1' }] }]
     };
     const payload = buildCloudCodeRequestFromStandard(stdReq, 'project-123', 'test@test.com');
     expect(payload.request.contents).toEqual(stdReq.contents);

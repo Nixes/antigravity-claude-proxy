@@ -1,6 +1,6 @@
-import { StandardRequest, StandardResponse, StandardStreamChunk, GContent, GPart } from './types.js';
+import { StandardRequest, StandardResponse, StandardStreamChunk, GContent, GPart, OpenAIRequest, OpenAIResponse } from './types.js';
 
-export function parseOpenAIRequest(req: any): StandardRequest {
+export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
   if (!req.messages || !Array.isArray(req.messages)) {
     throw new Error('invalid_request_error: messages is required and must be an array');
   }
@@ -113,11 +113,11 @@ export function parseOpenAIRequest(req: any): StandardRequest {
 
   if (req.tools && Array.isArray(req.tools)) {
     const functionDeclarations = req.tools
-      .filter((t: any) => t.type === 'function')
-      .map((t: any) => ({
-        name: t.function.name,
-        description: t.function.description || '',
-        parameters: t.function.parameters || { type: 'object' },
+      .filter((t: unknown) => (t as any).type === 'function')
+      .map((t: unknown) => ({
+        name: (t as any).function.name,
+        description: (t as any).function.description || '',
+        parameters: (t as any).function.parameters || { type: 'object' },
       }));
     if (functionDeclarations.length > 0) {
       standardReq.tools = [{ functionDeclarations }];
@@ -131,11 +131,11 @@ export function parseOpenAIRequest(req: any): StandardRequest {
       standardReq.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
     } else if (req.tool_choice === 'required') {
       standardReq.toolConfig = { functionCallingConfig: { mode: 'ANY' } };
-    } else if (typeof req.tool_choice === 'object' && req.tool_choice.type === 'function') {
+    } else if (typeof req.tool_choice === 'object' && (req.tool_choice as any).type === 'function') {
       standardReq.toolConfig = {
         functionCallingConfig: {
           mode: 'ANY',
-          allowedFunctionNames: [req.tool_choice.function.name],
+          allowedFunctionNames: [(req.tool_choice as any).function.name],
         },
       };
     }
@@ -144,7 +144,7 @@ export function parseOpenAIRequest(req: any): StandardRequest {
   return standardReq;
 }
 
-export function formatOpenAIResponse(res: StandardResponse, model: string): object {
+export function formatOpenAIResponse(res: StandardResponse, model: string): OpenAIResponse {
   if (!res.candidates || res.candidates.length === 0) {
     return {
       id: `chatcmpl-${crypto.randomUUID()}`,
@@ -160,7 +160,7 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): obje
   const parts = candidate.content?.parts || [];
   
   let content = '';
-  const tool_calls: any[] = [];
+  const tool_calls: Array<{ id: string, type: string, function: { name: string, arguments: string } }> = [];
   
   for (const part of parts) {
     if (part.text) {
@@ -181,7 +181,10 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): obje
   if (candidate.finishReason === 'MAX_TOKENS') finish_reason = 'length';
   else if (candidate.finishReason === 'TOOL_USE' || tool_calls.length > 0) finish_reason = 'tool_calls';
 
-  const message: any = { role: 'assistant', content: (tool_calls.length > 0 && content === '') ? null : content };
+  const message: { role: string, content: string | null, tool_calls?: typeof tool_calls } = { 
+    role: 'assistant', 
+    content: (tool_calls.length > 0 && content === '') ? null : content 
+  };
   if (tool_calls.length > 0) message.tool_calls = tool_calls;
 
   const usage = res.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
@@ -216,7 +219,7 @@ export interface OpenAIStreamState {
 }
 
 export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenAIStreamState): string | null {
-  const innerResponse = (chunk as any).response || chunk;
+  const innerResponse = ('response' in chunk ? (chunk as unknown as { response: StandardStreamChunk }).response : chunk) as StandardStreamChunk;
   const candidates = innerResponse.candidates || [];
   if (candidates.length === 0) return null;
 
