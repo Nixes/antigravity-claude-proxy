@@ -6,13 +6,14 @@
 import { MIN_SIGNATURE_LENGTH, GEMINI_SKIP_SIGNATURE } from '../constants.js';
 import { getCachedSignature, getCachedSignatureFamily } from './signature-cache.js';
 import { logger } from '../utils/logger.js';
+import { GPart } from '../api/types.js';
 
 /**
  * Convert Anthropic role to Google role
- * @param {string} role - Anthropic role ('user', 'assistant')
- * @returns {string} Google role ('user', 'model')
+ * @param role - Anthropic role ('user', 'assistant')
+ * @returns Google role ('user', 'model')
  */
-export function convertRole(role) {
+export function convertRole(role: string): string {
     if (role === 'assistant') return 'model';
     if (role === 'user') return 'user';
     return 'user'; // Default to user
@@ -20,12 +21,18 @@ export function convertRole(role) {
 
 /**
  * Convert Anthropic message content to Google Generative AI parts
- * @param {string|Array} content - Anthropic message content
- * @param {boolean} isClaudeModel - Whether the model is a Claude model
- * @param {boolean} isGeminiModel - Whether the model is a Gemini model
- * @returns {Array} Google Generative AI parts array
+ * @param content - Anthropic message content
+ * @param isClaudeModel - Whether the model is a Claude model
+ * @param isGeminiModel - Whether the model is a Gemini model
+ * @param toolCallIdToName - Map of tool_use_id to tool name
+ * @returns Google Generative AI parts array
  */
-export function convertContentToParts(content, isClaudeModel = false, isGeminiModel = false) {
+export function convertContentToParts(
+    content: any, 
+    isClaudeModel: boolean = false, 
+    isGeminiModel: boolean = false,
+    toolCallIdToName: Map<string, string> | null = null
+): GPart[] {
     if (typeof content === 'string') {
         return [{ text: content }];
     }
@@ -34,8 +41,8 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
         return [{ text: String(content) }];
     }
 
-    const parts = [];
-    const deferredInlineData = []; // Collect inlineData to add at the end (Issue #91)
+    const parts: GPart[] = [];
+    const deferredInlineData: any[] = []; // Collect inlineData to add at the end (Issue #91)
 
     for (const block of content) {
         if (!block) continue;
@@ -84,7 +91,7 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
         } else if (block.type === 'tool_use') {
             // Convert tool_use to functionCall (Google format)
             // For Claude models, include the id field
-            const functionCall = {
+            const functionCall: any = {
                 name: block.name,
                 args: block.input || {}
             };
@@ -93,8 +100,12 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
                 functionCall.id = block.id;
             }
 
+            if (toolCallIdToName && block.id && block.name) {
+                toolCallIdToName.set(block.id, block.name);
+            }
+
             // Build the part with functionCall
-            const part = { functionCall };
+            const part: GPart = { functionCall };
 
             // For Gemini models, include thoughtSignature at the part level
             // This is required by Gemini 3+ for tool calls to work correctly
@@ -141,8 +152,9 @@ export function convertContentToParts(content, isClaudeModel = false, isGeminiMo
                 responseContent = { result: texts || (imageParts.length > 0 ? 'Image attached' : '') };
             }
 
-            const functionResponse = {
-                name: block.tool_use_id || 'unknown',
+            const mappedName = toolCallIdToName ? toolCallIdToName.get(block.tool_use_id) : undefined;
+            const functionResponse: any = {
+                name: mappedName || block.tool_use_id || 'unknown',
                 response: responseContent
             };
 

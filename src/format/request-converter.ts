@@ -24,21 +24,26 @@ import {
 } from './thinking-utils.js';
 import { logger } from '../utils/logger.js';
 
+import { StandardRequest, GContent, GPart } from '../api/types.js';
+
 /**
  * Convert Anthropic Messages API request to the format expected by Cloud Code
  *
  * Uses Google Generative AI format, but for Claude models:
  * - Keeps tool_result in Anthropic format (required by Claude API)
  *
- * @param {Object} anthropicRequest - Anthropic format request
- * @returns {Object} Request body for Cloud Code API
+ * @param anthropicRequest - Anthropic format request
+ * @returns Request body for Cloud Code API
  */
-export function convertAnthropicToGoogle(anthropicRequest) {
+export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest {
     // [CRITICAL FIX] Pre-clean all cache_control fields from messages (Issue #189)
     // Claude Code CLI sends cache_control on various content blocks, but Cloud Code API
     // rejects them with "Extra inputs are not permitted". Clean them proactively here
     // before any other processing, following the pattern from Antigravity-Manager.
     const messages = cleanCacheControl(anthropicRequest.messages || []);
+    
+    // Map to track tool_use_id -> function name for mapping tool results
+    const toolCallIdToName = new Map<string, string>();
 
     const { system, max_tokens, temperature, top_p, top_k, stop_sequences, tools, tool_choice, thinking } = anthropicRequest;
     const modelName = anthropicRequest.model || '';
@@ -47,7 +52,7 @@ export function convertAnthropicToGoogle(anthropicRequest) {
     const isGeminiModel = modelFamily === 'gemini';
     const isThinking = isThinkingModel(modelName);
 
-    const googleRequest = {
+    const googleRequest: any = {
         contents: [],
         generationConfig: {}
     };
@@ -118,7 +123,7 @@ export function convertAnthropicToGoogle(anthropicRequest) {
             msgContent = reorderAssistantContent(msgContent);
         }
 
-        const parts = convertContentToParts(msgContent, isClaudeModel, isGeminiModel);
+        const parts = convertContentToParts(msgContent, isClaudeModel, isGeminiModel, toolCallIdToName);
 
         // SAFETY: Google API requires at least one part per content message
         // This happens when all thinking blocks are filtered out (unsigned)
@@ -253,5 +258,5 @@ export function convertAnthropicToGoogle(anthropicRequest) {
         googleRequest.generationConfig.maxOutputTokens = GEMINI_MAX_OUTPUT_TOKENS;
     }
 
-    return googleRequest;
+    return googleRequest as StandardRequest;
 }
