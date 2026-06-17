@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseOpenAIRequest, formatOpenAIResponse, formatOpenAIStreamChunk } from './openai.js';
+import { parseOpenAIRequest, formatOpenAIResponse, formatOpenAIStreamChunk, OpenAIStreamState } from './openai.js';
 
 describe('parseOpenAIRequest', () => {
   describe('message mapping', () => {
@@ -302,16 +302,27 @@ describe('formatOpenAIResponse', () => {
 });
 
 describe('formatOpenAIStreamChunk', () => {
-  it('emits a role delta on the first chunk', () => {
-    const state = { hasEmittedRole: false, toolCallIndex: 0 };
+  const makeState = (hasEmittedRole = false): OpenAIStreamState => ({
+    id: 'chatcmpl-test',
+    model: 'test-model',
+    created: 12345,
+    hasEmittedRole,
+    toolCallIndex: 0,
+  });
+
+  it('emits a role+content delta as the very first chunk, even before text parts', () => {
+    const state = makeState(false);
     const chunk = { candidates: [{ content: { parts: [{ text: 'hi' }] } }] };
-    const res = formatOpenAIStreamChunk(chunk, state);
-    expect(res).toContain('"role":"assistant"');
+    const res = formatOpenAIStreamChunk(chunk, state) as string;
+    // First data: line should be the role chunk
+    const firstLine = res.split('\n\n')[0];
+    const parsed = JSON.parse(firstLine.replace('data: ', ''));
+    expect(parsed.choices[0].delta.role).toBe('assistant');
     expect(state.hasEmittedRole).toBe(true);
   });
 
   it('emits text content deltas as data: lines with no event: prefix', () => {
-    const state = { hasEmittedRole: true, toolCallIndex: 0 };
+    const state = makeState(true);
     const chunk = { candidates: [{ content: { parts: [{ text: 'hi' }] } }] };
     const res = formatOpenAIStreamChunk(chunk, state);
     expect(res).toContain('data: {');
@@ -320,49 +331,235 @@ describe('formatOpenAIStreamChunk', () => {
   });
 
   it('does not repeat role in subsequent text chunks', () => {
-    const state = { hasEmittedRole: true, toolCallIndex: 0 };
+    const state = makeState(true);
     const chunk = { candidates: [{ content: { parts: [{ text: 'hi' }] } }] };
     const res = formatOpenAIStreamChunk(chunk, state);
     expect(res).not.toContain('"role":"assistant"');
   });
 
-  it('emits tool_call start delta with id, type, and function name on first tool chunk', () => {
-    const state = { hasEmittedRole: true, toolCallIndex: 0 };
+  it('emits tool_call delta with index, id, type, function name and content: null', () => {
+    const state = makeState(true);
     const chunk = { candidates: [{ content: { parts: [{ functionCall: { name: 'f1', args: { a: 1 } } }] } }] };
-    const res = formatOpenAIStreamChunk(chunk, state);
-    expect(res).toContain('"tool_calls":[{"index":0,');
-    expect(res).toContain('"name":"f1"');
+    const res = formatOpenAIStreamChunk(chunk, state) as string;
+    const parsed = JSON.parse(res.trim().replace(/^data: /, '').split('\n\ndata: ')[0]);
+    const delta = parsed.choices[0].delta;
+    expect(delta.content).toBeNull();
+    expect(delta.tool_calls[0].index).toBe(0);
+    expect(delta.tool_calls[0].function.name).toBe('f1');
     expect(state.toolCallIndex).toBe(1);
   });
 
   it('emits argument fragment deltas for subsequent tool chunks', () => {
-    // Actually the current parse stream maps full tools at once in proxy.
-    // If it chunks, args would be part of it.
-    const state = { hasEmittedRole: true, toolCallIndex: 0 };
+    const state = makeState(true);
     const chunk = { candidates: [{ content: { parts: [{ functionCall: { name: 'f1', args: { a: 1 } } }] } }] };
     const res = formatOpenAIStreamChunk(chunk, state);
     expect(res).toContain('"arguments":"{\\"a\\":1}"');
   });
 
-  it('emits a finish_reason chunk followed by data: [DONE] on the final chunk', () => {
-    const state = { hasEmittedRole: true, toolCallIndex: 0 };
+  it('emits a finish_reason chunk on the final chunk', () => {
+    const state = makeState(true);
     const chunk = { candidates: [{ finishReason: 'STOP' }] };
-    const res = formatOpenAIStreamChunk(chunk, state);
-    expect(res).toContain('"finish_reason":"stop"');
-    expect(res).toContain('data: [DONE]\n\n');
+    const res = formatOpenAIStreamChunk(chunk, state) as string;
+    // finishReason chunk uses finish_reason:"stop", delta:{}
+    const parsed = JSON.parse(res.trim().replace(/^data: /, ''));
+    expect(parsed.choices[0].finish_reason).toBe('stop');
+    expect(parsed.choices[0].delta).toEqual({});
   });
 
-  it('returns null for chunks with no candidates or parts', () => {
-    const state = { hasEmittedRole: true, toolCallIndex: 0 };
+  it('returns null for chunks with no candidates', () => {
+    const state = makeState(true);
     const chunk = { candidates: [] };
     const res = formatOpenAIStreamChunk(chunk, state);
     expect(res).toBeNull();
   });
 
-  it('suppresses thought: true parts — returns null', () => {
-    const state = { hasEmittedRole: true, toolCallIndex: 0 };
+  it('suppresses thought: true parts — emits only role chunk when no other parts', () => {
+    const state = makeState(false);
     const chunk = { candidates: [{ content: { parts: [{ text: 'thinking', thought: true }] } }] };
-    const res = formatOpenAIStreamChunk(chunk, state);
-    expect(res).toBeNull(); // Nothing emitted since parts filtered and no finish reason
+    const res = formatOpenAIStreamChunk(chunk, state) as string;
+    // Role chunk is still emitted (hasEmittedRole becomes true)
+    expect(state.hasEmittedRole).toBe(true);
+    // But no text content chunk for the thought part
+    expect(res).not.toContain('"content":"thinking"');
+  });
+});
+
+/**
+ * ─── Regression Tests ──────────────────────────────────────────────────────
+ * Explicit guards for each spec-compliance bug found in the OpenAI audit.
+ * Each test documents the bug, the wrong behaviour, and the correct behaviour.
+ */
+describe('OpenAI spec compliance regressions', () => {
+  // ── Non-streaming response ──────────────────────────────────────────────
+
+  describe('formatOpenAIResponse', () => {
+    it('regression: content must be null (not "") when response is tool-call only', () => {
+      /**
+       * BUG: content was always set to the accumulated text string even when empty.
+       * For a pure tool-call response the text accumulator is "", which was then
+       * set as content. The OpenAI spec requires content to be null in this case
+       * so that clients (LangChain, openai-node SDK) can detect tool-only turns.
+       *
+       * WRONG:   { role: "assistant", content: "" }
+       * CORRECT: { role: "assistant", content: null, tool_calls: [...] }
+       */
+      const res = formatOpenAIResponse(
+        {
+          candidates: [{
+            content: { parts: [{ functionCall: { name: 'get_weather', args: { city: 'NYC' } } }] },
+            finishReason: 'TOOL_USE',
+          }],
+          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
+        },
+        'test-model',
+      ) as any;
+
+      expect(res.choices[0].message.content).toBeNull();
+      expect(res.choices[0].message.tool_calls).toHaveLength(1);
+    });
+
+    it('regression: content is preserved (not null) when text AND tool calls coexist', () => {
+      /**
+       * BUG FOLLOW-UP: after fixing tool-only -> null, must not break mixed responses
+       * where the model legitimately produced both text reasoning AND a tool call.
+       * The text content must survive.
+       *
+       * WRONG:   { content: null }  <- over-applying the null rule
+       * CORRECT: { content: "thinking out loud...", tool_calls: [...] }
+       */
+      const res = formatOpenAIResponse(
+        {
+          candidates: [{
+            content: { parts: [{ text: 'thinking out loud...' }, { functionCall: { name: 'f1', args: {} } }] },
+            finishReason: 'TOOL_USE',
+          }],
+          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
+        },
+        'test-model',
+      ) as any;
+
+      expect(res.choices[0].message.content).toBe('thinking out loud...');
+      expect(res.choices[0].message.tool_calls).toHaveLength(1);
+    });
+  });
+
+  // ── Streaming response ──────────────────────────────────────────────────
+
+  describe('formatOpenAIStreamChunk', () => {
+    const makeState = (hasEmittedRole = false): OpenAIStreamState => ({
+      id: 'chatcmpl-regression',
+      model: 'test-model',
+      created: 99999,
+      hasEmittedRole,
+      toolCallIndex: 0,
+    });
+
+    it('regression: role is emitted as its own dedicated first chunk, not mixed into content chunks', () => {
+      /**
+       * BUG: The role "assistant" was baked into a shared baseChunk template and then
+       * deep-cloned for every text part. This caused the role to appear on every text
+       * delta chunk, not just the first — violating the SSE protocol where role is a
+       * one-time announcement in its own delta.
+       *
+       * WRONG:   [{ delta: { role:"assistant", content:"Hello" } }, { delta: { role:"assistant", content:" world" } }]
+       * CORRECT: [{ delta: { role:"assistant", content:"" } }, { delta: { content:"Hello" } }, { delta: { content:" world" } }]
+       */
+      const state = makeState(false);
+      const chunk = { candidates: [{ content: { parts: [{ text: 'Hello' }, { text: ' world' }] } }] };
+      const res = formatOpenAIStreamChunk(chunk, state) as string;
+
+      const dataLines = res.split('\n\n').filter(l => l.startsWith('data: '));
+      const parsed = dataLines.map(l => JSON.parse(l.replace('data: ', '')));
+
+      // First chunk must be the role chunk
+      expect(parsed[0].choices[0].delta.role).toBe('assistant');
+
+      // Subsequent content chunks must NOT carry the role field
+      for (const p of parsed.slice(1)) {
+        expect(p.choices[0].delta).not.toHaveProperty('role');
+      }
+    });
+
+    it('regression: all chunks in a stream share the same id and created timestamp', () => {
+      /**
+       * BUG: The old code called crypto.randomUUID() and Date.now() inside the formatter
+       * for every single chunk. This produced a different id/timestamp per SSE line,
+       * which breaks clients that use the id to correlate chunks into one response.
+       *
+       * CORRECT: all chunks share the id/created from the state initialised once per request.
+       */
+      const state = makeState(false);
+      const chunk = { candidates: [{ content: { parts: [{ text: 'A' }, { text: 'B' }] } }] };
+      const res = formatOpenAIStreamChunk(chunk, state) as string;
+
+      const dataLines = res.split('\n\n').filter(l => l.startsWith('data: '));
+      const parsed = dataLines.map(l => JSON.parse(l.replace('data: ', '')));
+
+      const ids = parsed.map((p: any) => p.id);
+      const timestamps = parsed.map((p: any) => p.created);
+
+      expect(new Set(ids).size).toBe(1);
+      expect(ids[0]).toBe('chatcmpl-regression');
+      expect(new Set(timestamps).size).toBe(1);
+      expect(timestamps[0]).toBe(99999);
+    });
+
+    it('regression: tool call delta must have content: null, not undefined or a missing key', () => {
+      /**
+       * BUG: When a tool call was streamed, delta was built without a content field at all.
+       * The OpenAI spec and clients like LangChain explicitly check delta.content === null
+       * (not just falsy) to distinguish a tool-call delta from a text delta.
+       *
+       * WRONG:   { delta: { tool_calls: [...] } }            <- content key absent
+       * CORRECT: { delta: { content: null, tool_calls: [...] } }
+       */
+      const state = makeState(true);
+      const chunk = {
+        candidates: [{
+          content: { parts: [{ functionCall: { name: 'search', args: { q: 'test' } } }] },
+        }],
+      };
+      const res = formatOpenAIStreamChunk(chunk, state) as string;
+      const parsed = JSON.parse(res.trim().replace(/^data: /, ''));
+      const delta = parsed.choices[0].delta;
+
+      expect(Object.prototype.hasOwnProperty.call(delta, 'content')).toBe(true);
+      expect(delta.content).toBeNull();
+    });
+
+    it('regression: finish_reason chunk has an empty delta {}, not a delta with stale fields', () => {
+      /**
+       * BUG (related): Previously the finish chunk was cloned from baseChunk which could
+       * carry stale delta state. The final chunk must have delta: {} (empty object) with
+       * finish_reason set. openai-python checks delta == {} to identify the sentinel.
+       *
+       * CORRECT: { choices: [{ delta: {}, finish_reason: "stop" }] }
+       */
+      const state = makeState(true);
+      const chunk = { candidates: [{ finishReason: 'STOP' }] };
+      const res = formatOpenAIStreamChunk(chunk, state) as string;
+      const parsed = JSON.parse(res.trim().replace(/^data: /, ''));
+
+      expect(parsed.choices[0].delta).toStrictEqual({});
+      expect(parsed.choices[0].finish_reason).toBe('stop');
+    });
+
+    it('regression: intermediate chunks have finish_reason: null present in JSON', () => {
+      /**
+       * SPEC REQUIREMENT: OpenAI spec says finish_reason must be null on all non-terminal
+       * chunks. It must be serialised as null in JSON, not omitted. Some client parsers
+       * distinguish between key: null and a missing key.
+       */
+      const state = makeState(true);
+      const chunk = { candidates: [{ content: { parts: [{ text: 'partial' }] } }] };
+      const res = formatOpenAIStreamChunk(chunk, state) as string;
+
+      const contentLine = res.split('\n\n').find(l => l.includes('"content":"partial"'))!;
+      expect(contentLine).toBeTruthy();
+      const parsed = JSON.parse(contentLine.replace('data: ', ''));
+
+      expect(Object.prototype.hasOwnProperty.call(parsed.choices[0], 'finish_reason')).toBe(true);
+      expect(parsed.choices[0].finish_reason).toBeNull();
+    });
   });
 });

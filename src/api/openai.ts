@@ -181,7 +181,7 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): obje
   if (candidate.finishReason === 'MAX_TOKENS') finish_reason = 'length';
   else if (candidate.finishReason === 'TOOL_USE' || tool_calls.length > 0) finish_reason = 'tool_calls';
 
-  const message: any = { role: 'assistant', content };
+  const message: any = { role: 'assistant', content: (tool_calls.length > 0 && content === '') ? null : content };
   if (tool_calls.length > 0) message.tool_calls = tool_calls;
 
   const usage = res.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
@@ -208,6 +208,9 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): obje
 }
 
 export interface OpenAIStreamState {
+  id: string;
+  model: string;
+  created: number;
   hasEmittedRole: boolean;
   toolCallIndex: number;
 }
@@ -221,49 +224,66 @@ export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenA
   const parts = candidate.content?.parts || [];
   let chunksToEmit: string[] = [];
 
-  const baseChunk = {
-    id: `chatcmpl-${crypto.randomUUID()}`,
-    object: 'chat.completion.chunk',
-    created: Math.floor(Date.now() / 1000),
-    model: 'model',
-    choices: [{ index: 0, delta: {} as any, finish_reason: null }],
-  };
 
-  if (!state.hasEmittedRole && parts.length > 0) {
+  if (!state.hasEmittedRole) {
     state.hasEmittedRole = true;
-    baseChunk.choices[0].delta.role = 'assistant';
+    // The role chunk is always the very first chunk, emitted separately.
+    const roleChunk = {
+      id: state.id,
+      object: 'chat.completion.chunk',
+      created: state.created,
+      model: state.model,
+      choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }],
+    };
+    chunksToEmit.push(`data: ${JSON.stringify(roleChunk)}\n\n`);
   }
 
   for (const part of parts) {
     if (part.thought) continue; // Suppress thinking
 
     if (part.text) {
-      const textChunk = JSON.parse(JSON.stringify(baseChunk));
-      textChunk.choices[0].delta.content = part.text;
+      const textChunk = {
+        id: state.id,
+        object: 'chat.completion.chunk',
+        created: state.created,
+        model: state.model,
+        choices: [{ index: 0, delta: { content: part.text }, finish_reason: null }],
+      };
       chunksToEmit.push(`data: ${JSON.stringify(textChunk)}\n\n`);
     } else if (part.functionCall) {
-      const toolChunk = JSON.parse(JSON.stringify(baseChunk));
-      toolChunk.choices[0].delta.tool_calls = [{
-        index: state.toolCallIndex,
-        id: `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 24)}`,
-        type: 'function',
-        function: {
-          name: part.functionCall.name,
-          arguments: JSON.stringify(part.functionCall.args),
-        },
-      }];
+      const toolChunk = {
+        id: state.id,
+        object: 'chat.completion.chunk',
+        created: state.created,
+        model: state.model,
+        choices: [{ index: 0, delta: { content: null, tool_calls: [{
+          index: state.toolCallIndex,
+          id: `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 24)}`,
+          type: 'function',
+          function: {
+            name: part.functionCall.name,
+            arguments: JSON.stringify(part.functionCall.args),
+          },
+        }]}, finish_reason: null }],
+      };
       chunksToEmit.push(`data: ${JSON.stringify(toolChunk)}\n\n`);
       state.toolCallIndex++;
     }
   }
 
   if (candidate.finishReason) {
-    const finishChunk = JSON.parse(JSON.stringify(baseChunk));
-    if (candidate.finishReason === 'MAX_TOKENS') finishChunk.choices[0].finish_reason = 'length';
-    else if (candidate.finishReason === 'TOOL_USE') finishChunk.choices[0].finish_reason = 'tool_calls';
-    else finishChunk.choices[0].finish_reason = 'stop';
+    let finish_reason: string;
+    if (candidate.finishReason === 'MAX_TOKENS') finish_reason = 'length';
+    else if (candidate.finishReason === 'TOOL_USE') finish_reason = 'tool_calls';
+    else finish_reason = 'stop';
+    const finishChunk = {
+      id: state.id,
+      object: 'chat.completion.chunk',
+      created: state.created,
+      model: state.model,
+      choices: [{ index: 0, delta: {}, finish_reason }],
+    };
     chunksToEmit.push(`data: ${JSON.stringify(finishChunk)}\n\n`);
-    chunksToEmit.push('data: [DONE]\n\n');
   }
 
   return chunksToEmit.length > 0 ? chunksToEmit.join('') : null;

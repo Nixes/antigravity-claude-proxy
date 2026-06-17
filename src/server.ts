@@ -765,7 +765,7 @@ app.post('/v1/chat/completions', async (req: any, res: any) => {
                     id: `chatcmpl-${crypto.randomUUID().replace(/-/g, '')}`,
                     created: Math.floor(Date.now() / 1000),
                     hasEmittedRole: false,
-                    chunkIndex: 0
+                    toolCallIndex: 0
                 };
 
                 if (!firstResult.done) {

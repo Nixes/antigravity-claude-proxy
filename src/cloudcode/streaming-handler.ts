@@ -314,83 +314,44 @@ export async function* sendMessageStreamStandard(standardRequest: StandardReques
                         continue;
                     }
 
-                    // Stream the response with retry logic for empty responses
-                    let currentResponse = response;
+                    // Parse raw SSE from Google and yield each JSON chunk natively.
+                    // We do NOT call streamSSEResponse (which yields Anthropic-format events).
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    let yieldedAny = false;
 
-                    for (let emptyRetries = 0; emptyRetries <= MAX_EMPTY_RESPONSE_RETRIES; emptyRetries++) {
-                        try {
-                            yield* streamSSEResponse(currentResponse, anthropicRequest.model);
-                            logger.debug('[CloudCode] Stream completed');
-                            // Clear rate limit state on success
-                            clearRateLimitState(account.email, model);
-                            accountManager.notifySuccess(account, model);
-                            return;
-                        } catch (streamError) {
-                            // Only retry on EmptyResponseError
-                            if (!isEmptyResponseError(streamError)) {
-                                throw streamError;
-                            }
-
-                            // Check if we have retries left
-                            if (emptyRetries >= MAX_EMPTY_RESPONSE_RETRIES) {
-                                logger.error(`[CloudCode] Empty response after ${MAX_EMPTY_RESPONSE_RETRIES} retries`);
-                                yield* emitEmptyResponseFallback(anthropicRequest.model);
-                                return;
-                            }
-
-                            // Exponential backoff: 500ms, 1000ms, 2000ms
-                            const backoffMs = 500 * Math.pow(2, emptyRetries);
-                            logger.warn(`[CloudCode] Empty response, retry ${emptyRetries + 1}/${MAX_EMPTY_RESPONSE_RETRIES} after ${backoffMs}ms...`);
-                            await sleep(backoffMs);
-
-                            // Refetch the response
-                            currentResponse = await throttledFetch(url, {
-                                method: 'POST',
-                                headers: buildHeaders(token, model, 'text/event-stream', payload.request.sessionId),
-                                body: JSON.stringify(payload)
-                            });
-
-                            // Handle specific error codes on retry
-                            if (!currentResponse.ok) {
-                                const retryErrorText = await currentResponse.text();
-
-                                // Rate limit error - mark account and throw to trigger account switch
-                                if (currentResponse.status === 429) {
-                                    const resetMs = parseResetTime(currentResponse, retryErrorText);
-                                    accountManager.markRateLimited(account.email, resetMs, model);
-                                    throw new Error(`429 RESOURCE_EXHAUSTED during retry: ${retryErrorText}`);
-                                }
-
-                                // Auth error - check for permanent failure
-                                if (currentResponse.status === 401) {
-                                    if (isPermanentAuthFailure(retryErrorText)) {
-                                        logger.error(`[CloudCode] Permanent auth failure during retry for ${account.email}`);
-                                        accountManager.markInvalid(account.email, 'Token revoked - re-authentication required');
-                                        throw new Error(`AUTH_INVALID_PERMANENT: ${retryErrorText}`);
-                                    }
-                                    accountManager.clearTokenCache(account.email);
-                                    accountManager.clearProjectCache(account.email);
-                                    throw new Error(`401 AUTH_INVALID during retry: ${retryErrorText}`);
-                                }
-
-                                // For 5xx errors, continue retrying
-                                if (currentResponse.status >= 500) {
-                                    logger.warn(`[CloudCode] Retry got ${currentResponse.status}, will retry...`);
-                                    await sleep(1000);
-                                    currentResponse = await throttledFetch(url, {
-                                        method: 'POST',
-                                        headers: buildHeaders(token, model, 'text/event-stream'),
-                                        body: JSON.stringify(payload)
-                                    });
-                                    if (currentResponse.ok) {
-                                        continue;
-                                    }
-                                }
-
-                                throw new Error(`Empty response retry failed: ${currentResponse.status} - ${retryErrorText}`);
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+                        for (const line of lines) {
+                            if (!line.startsWith('data:')) continue;
+                            const jsonText = line.slice(5).trim();
+                            if (!jsonText) continue;
+                            try {
+                                const data = JSON.parse(jsonText);
+                                yieldedAny = true;
+                                yield data;
+                            } catch (e: any) {
+                                logger.debug('[CloudCode] SSE parse error:', e.message);
                             }
                         }
                     }
+
+                    if (yieldedAny) {
+                        logger.debug('[CloudCode] Stream completed');
+                        clearRateLimitState(account.email, model);
+                        accountManager.notifySuccess(account, model);
+                        return;
+                    }
+
+                    // No data yielded — treat as empty response and retry
+                    logger.warn('[CloudCode] Stream produced no SSE data, treating as empty response');
+                    endpointIndex++;
+                    continue;
 
                 } catch (endpointError) {
                     if (isRateLimitError(endpointError)) {
@@ -493,8 +454,8 @@ export async function* sendMessageStreamStandard(standardRequest: StandardReques
         const fallbackModel = getFallbackModel(model);
         if (fallbackModel) {
             logger.warn(`[CloudCode] All retries exhausted for ${model}. Attempting fallback to ${fallbackModel} (streaming)`);
-            const fallbackRequest = { ...anthropicRequest, model: fallbackModel };
-            yield* sendMessageStream(fallbackRequest, accountManager, false);
+            const fallbackRequest = { ...standardRequest, model: fallbackModel };
+            yield* sendMessageStreamStandard(fallbackRequest, accountManager, false);
             return;
         }
     }
