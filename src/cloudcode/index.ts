@@ -10,8 +10,8 @@
  */
 
 // Re-export public API
-export { sendMessage } from './message-handler.js';
-export { sendMessageStream } from './streaming-handler.js';
+export { sendMessage, sendMessageStandard } from './message-handler.js';
+export { sendMessageStream, sendMessageStreamStandard } from './streaming-handler.js';
 export { listModels, fetchAvailableModels, getModelQuotas, getSubscriptionTier, isValidModel } from './model-api.js';
 
 // Default export for backwards compatibility

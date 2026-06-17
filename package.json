@@ -17,9 +17,11 @@
     "build:css": "tailwindcss -i ./public/css/src/input.css -o ./public/css/style.css --minify",
     "watch:css": "tailwindcss -i ./public/css/src/input.css -o ./public/css/style.css --watch",
     "prepare": "npm run build:css",
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
+    "start": "node --import tsx src/index.js",
+    "dev": "node --watch --import tsx src/index.js",
     "dev:full": "concurrently \"npm run watch:css\" \"npm run dev\"",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
     "accounts": "node src/cli/accounts.js",
     "accounts:add": "node src/cli/accounts.js add",
     "accounts:list": "node src/cli/accounts.js list",
@@ -64,6 +66,7 @@
     "better-sqlite3": "^12.5.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "tsx": "^4.22.4",
     "undici": "^7.20.0"
   },
   "devDependencies": {
@@ -72,6 +75,7 @@
     "concurrently": "^8.2.2",
     "daisyui": "^4.12.14",
     "postcss": "^8.4.32",
-    "tailwindcss": "^3.4.0"
+    "tailwindcss": "^3.4.0",
+    "vitest": "^4.1.9"
   }
 }
