@@ -8,7 +8,7 @@ const modelsRouter = Router();
 /**
  * List models endpoint (OpenAI-compatible format)
  */
-modelsRouter.get('/v1/models', async (req, res) => {
+modelsRouter.get('/models', async (req, res) => {
     try {
         await ensureInitialized();
         const { account } = accountManager.selectAccount();
