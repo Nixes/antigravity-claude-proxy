@@ -24,7 +24,8 @@ import { formatDuration, sleep, isNetworkError, throttledFetch } from '../utils/
 import { logger } from '../utils/logger.js';
 import { convertAnthropicToGoogle, convertRole } from '../format/request-converter.js';
 import { formatAnthropicResponse } from '../api/anthropic.js';
-import { isThinkingModel, getFallbackModel } from '../format/thinking-utils.js';
+import { isThinkingModel } from '../constants.js';
+import { getFallbackModel } from '../fallback-config.js';
 import { StandardRequest, StandardResponse, IAccountManager, AnthropicRequest } from '../api/types.js';
 import { parseResetTime } from './rate-limit-parser.js';
 import { buildCloudCodeRequest, buildCloudCodeRequestFromStandard, buildHeaders } from './request-builder.js';
