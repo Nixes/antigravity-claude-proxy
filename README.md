@@ -43,6 +43,13 @@ A proxy server that exposes an **Anthropic-compatible API** backed by **Antigrav
 4. Sends to Antigravity's Cloud Code API
 5. Converts responses back to **Anthropic format** with full thinking/streaming support
 
+## Key Features
+- **Full Tool Calling / Function Calling Support**: Flawlessly map Anthropic tools & OpenAI function calls to Google Gemini's native function calling architecture.
+- **Stateful Tool ID Tracking**: Dynamically tracks `tool_use_id` mapping between multi-turn stateless proxies and Gemini's expected tool formats.
+- **Strict TypeScript Architecture**: The entire data pipeline (Request builders, SSE stream parsers, content converters) is fully strictly-typed for enterprise-grade reliability and zero implicit cast crashes.
+- **Multi-Account Load Balancing**: Automatically cycle through multiple accounts to bypass rate limits.
+- **Anthropic & OpenAI Compatible Endpoints**: Supports `/v1/messages` and `/v1/chat/completions`.
+
 ## Prerequisites
 
 - **Node.js** 18 or later
