@@ -1,5 +1,5 @@
 import { StandardRequest, StandardResponse, StandardStreamChunk, GContent, GPart, OpenAIRequest, OpenAIResponse } from './types.js';
-
+import { cacheSignature, getCachedSignature } from '../format/signature-cache.js';
 export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
   if (!req.messages || !Array.isArray(req.messages)) {
     throw new Error('invalid_request_error: messages is required and must be an array');
@@ -62,6 +62,7 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
               name: call.function.name,
               args: call.function.arguments ? JSON.parse(call.function.arguments) : {},
             },
+            thoughtSignature: getCachedSignature(call.id) || undefined,
           });
         }
       }
@@ -163,17 +164,23 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): Open
   const tool_calls: Array<{ id: string, type: string, function: { name: string, arguments: string } }> = [];
   
   for (const part of parts) {
-    if (part.text) {
+    if (part.thought) {
+      content += `<think>\n${part.text}\n</think>\n\n`;
+    } else if (part.text) {
       content += part.text;
     } else if (part.functionCall) {
+      const toolCallId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 24)}`;
       tool_calls.push({
-        id: `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 24)}`,
+        id: toolCallId,
         type: 'function',
         function: {
           name: part.functionCall.name,
           arguments: JSON.stringify(part.functionCall.args),
         },
       });
+      if (part.thoughtSignature) {
+        cacheSignature(toolCallId, part.thoughtSignature);
+      }
     }
   }
 
@@ -216,6 +223,7 @@ export interface OpenAIStreamState {
   created: number;
   hasEmittedRole: boolean;
   toolCallIndex: number;
+  isThinking?: boolean;
 }
 
 export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenAIStreamState): string | null {
@@ -242,18 +250,58 @@ export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenA
   }
 
   for (const part of parts) {
-    if (part.thought) continue; // Suppress thinking
+    if (part.thought) {
+      let textToEmit = '';
+      if (!state.isThinking) {
+        textToEmit += '<think>\n';
+        state.isThinking = true;
+      }
+      if (part.text) textToEmit += part.text;
+      
+      if (textToEmit) {
+        const textChunk = {
+          id: state.id,
+          object: 'chat.completion.chunk',
+          created: state.created,
+          model: state.model,
+          choices: [{ index: 0, delta: { content: textToEmit }, finish_reason: null }],
+        };
+        chunksToEmit.push(`data: ${JSON.stringify(textChunk)}\n\n`);
+      }
+    } else if (part.text) {
+      let textToEmit = '';
+      if (state.isThinking) {
+        textToEmit += '\n</think>\n\n';
+        state.isThinking = false;
+      }
+      textToEmit += part.text;
 
-    if (part.text) {
       const textChunk = {
         id: state.id,
         object: 'chat.completion.chunk',
         created: state.created,
         model: state.model,
-        choices: [{ index: 0, delta: { content: part.text }, finish_reason: null }],
+        choices: [{ index: 0, delta: { content: textToEmit }, finish_reason: null }],
       };
       chunksToEmit.push(`data: ${JSON.stringify(textChunk)}\n\n`);
     } else if (part.functionCall) {
+      if (state.isThinking) {
+        const closeThinkChunk = {
+          id: state.id,
+          object: 'chat.completion.chunk',
+          created: state.created,
+          model: state.model,
+          choices: [{ index: 0, delta: { content: '\n</think>\n\n' }, finish_reason: null }],
+        };
+        chunksToEmit.push(`data: ${JSON.stringify(closeThinkChunk)}\n\n`);
+        state.isThinking = false;
+      }
+
+      const toolCallId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 24)}`;
+      if (part.thoughtSignature) {
+        cacheSignature(toolCallId, part.thoughtSignature);
+      }
+
       const toolChunk = {
         id: state.id,
         object: 'chat.completion.chunk',
@@ -261,7 +309,7 @@ export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenA
         model: state.model,
         choices: [{ index: 0, delta: { content: null, tool_calls: [{
           index: state.toolCallIndex,
-          id: `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 24)}`,
+          id: toolCallId,
           type: 'function',
           function: {
             name: part.functionCall.name,
@@ -275,6 +323,17 @@ export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenA
   }
 
   if (candidate.finishReason) {
+    if (state.isThinking) {
+      const closeThinkChunk = {
+        id: state.id,
+        object: 'chat.completion.chunk',
+        created: state.created,
+        model: state.model,
+        choices: [{ index: 0, delta: { content: '\n</think>\n\n' }, finish_reason: null }],
+      };
+      chunksToEmit.push(`data: ${JSON.stringify(closeThinkChunk)}\n\n`);
+      state.isThinking = false;
+    }
     let finish_reason: string;
     if (candidate.finishReason === 'MAX_TOKENS') finish_reason = 'length';
     else if (candidate.finishReason === 'TOOL_USE') finish_reason = 'tool_calls';

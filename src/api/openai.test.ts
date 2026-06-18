@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { parseOpenAIRequest, formatOpenAIResponse, formatOpenAIStreamChunk, OpenAIStreamState } from './openai.js';
+import * as signatureCache from '../format/signature-cache.js';
 
 describe('parseOpenAIRequest', () => {
   describe('message mapping', () => {
@@ -92,6 +93,7 @@ describe('parseOpenAIRequest', () => {
     });
 
     it('maps assistant tool_calls to a functionCall part in the model turn', () => {
+      vi.spyOn(signatureCache, 'getCachedSignature').mockReturnValue('mock-signature');
       const req = {
         model: 'test',
         messages: [
@@ -105,6 +107,8 @@ describe('parseOpenAIRequest', () => {
       const res = parseOpenAIRequest(req);
       expect(res.contents[0].parts).toHaveLength(1);
       expect(res.contents[0].parts[0].functionCall).toEqual({ name: 'get_weather', args: { loc: 'nyc' } });
+      expect(res.contents[0].parts[0].thoughtSignature).toBe('mock-signature');
+      vi.restoreAllMocks();
     });
 
     it('maps a tool role message to a functionResponse part in a user turn', () => {
@@ -238,11 +242,14 @@ describe('formatOpenAIResponse', () => {
     expect(res.choices[0].message.content).toBe('hello world');
   });
 
-  it('maps a functionCall part to choices[0].message.tool_calls with stringified arguments', () => {
-    const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ functionCall: { name: 'f1', args: { a: 1 } } }] }, finishReason: 'TOOL_USE' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
-    expect(res.choices[0].message.tool_calls).toHaveLength(1);
-    expect(res.choices[0].message.tool_calls[0].function.name).toBe('f1');
-    expect(res.choices[0].message.tool_calls[0].function.arguments).toBe('{"a":1}');
+  it('maps a functionCall part to choices[0].message.tool_calls with stringified arguments and caches signature', () => {
+      const cacheSpy = vi.spyOn(signatureCache, 'cacheSignature');
+      const res = formatOpenAIResponse({ candidates: [{ content: { parts: [{ functionCall: { name: 'f1', args: { a: 1 } }, thoughtSignature: 'test-sig' }] }, finishReason: 'TOOL_USE' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
+      expect(res.choices[0].message.tool_calls).toHaveLength(1);
+      expect(res.choices[0].message.tool_calls[0].function.name).toBe('f1');
+      expect(res.choices[0].message.tool_calls[0].function.arguments).toBe('{"a":1}');
+      expect(cacheSpy).toHaveBeenCalledWith(res.choices[0].message.tool_calls[0].id, 'test-sig');
+      vi.restoreAllMocks();
   });
 
   it('maps multiple functionCall parts to multiple tool_calls entries', () => {
@@ -337,9 +344,10 @@ describe('formatOpenAIStreamChunk', () => {
     expect(res).not.toContain('"role":"assistant"');
   });
 
-  it('emits tool_call delta with index, id, type, function name and content: null', () => {
+  it('emits tool_call delta with index, id, type, function name, content: null and caches signature', () => {
+    const cacheSpy = vi.spyOn(signatureCache, 'cacheSignature');
     const state = makeState(true);
-    const chunk = { candidates: [{ content: { parts: [{ functionCall: { name: 'f1', args: { a: 1 } } }] } }] };
+    const chunk = { candidates: [{ content: { parts: [{ functionCall: { name: 'f1', args: { a: 1 } }, thoughtSignature: 'test-sig-stream' }] } }] };
     const res = formatOpenAIStreamChunk(chunk, state) as string;
     const parsed = JSON.parse(res.trim().replace(/^data: /, '').split('\n\ndata: ')[0]);
     const delta = parsed.choices[0].delta;
@@ -347,6 +355,8 @@ describe('formatOpenAIStreamChunk', () => {
     expect(delta.tool_calls[0].index).toBe(0);
     expect(delta.tool_calls[0].function.name).toBe('f1');
     expect(state.toolCallIndex).toBe(1);
+    expect(cacheSpy).toHaveBeenCalledWith(delta.tool_calls[0].id, 'test-sig-stream');
+    vi.restoreAllMocks();
   });
 
   it('emits argument fragment deltas for subsequent tool chunks', () => {
@@ -373,14 +383,18 @@ describe('formatOpenAIStreamChunk', () => {
     expect(res).toBeNull();
   });
 
-  it('suppresses thought: true parts — emits only role chunk when no other parts', () => {
+  it('formats thought: true parts with <think> tags', () => {
     const state = makeState(false);
     const chunk = { candidates: [{ content: { parts: [{ text: 'thinking', thought: true }] } }] };
     const res = formatOpenAIStreamChunk(chunk, state) as string;
-    // Role chunk is still emitted (hasEmittedRole becomes true)
     expect(state.hasEmittedRole).toBe(true);
-    // But no text content chunk for the thought part
-    expect(res).not.toContain('"content":"thinking"');
+    expect(res).toContain('<think>\\nthinking');
+    expect(state.isThinking).toBe(true);
+
+    const chunk2 = { candidates: [{ content: { parts: [{ text: ' done' }] } }] };
+    const res2 = formatOpenAIStreamChunk(chunk2, state) as string;
+    expect(res2).toContain('\\n</think>\\n\\n done');
+    expect(state.isThinking).toBe(false);
   });
 });
 
