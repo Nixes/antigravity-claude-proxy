@@ -1,6 +1,6 @@
 import { StandardRequest, StandardResponse, StandardStreamChunk, GContent, GPart, OpenAIRequest, OpenAIResponse } from './types.js';
 import { cacheSignature, getCachedSignature } from '../format/signature-cache.js';
-import { formatGroundingFootnotes } from '../format/grounding-formatter.js';
+import { formatGroundingFootnotes, extractClientGroundingMetadata } from '../format/grounding-formatter.js';
 export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
   if (!req.messages || !Array.isArray(req.messages)) {
     throw new Error('invalid_request_error: messages is required and must be an array');
@@ -208,7 +208,7 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): Open
   const usage = res.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
   const input_tokens = usage.promptTokenCount - (usage.cachedContentTokenCount || 0);
 
-  return {
+  const openaiRes: OpenAIResponse = {
     id: `chatcmpl-${crypto.randomUUID()}`,
     object: 'chat.completion',
     created: Math.floor(Date.now() / 1000),
@@ -226,6 +226,13 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): Open
       total_tokens: input_tokens + usage.candidatesTokenCount,
     },
   };
+
+  const clientMetadata = extractClientGroundingMetadata(candidate.groundingMetadata);
+  if (clientMetadata) {
+    openaiRes.grounding_metadata = clientMetadata;
+  }
+
+  return openaiRes;
 }
 
 export interface OpenAIStreamState {
@@ -361,13 +368,19 @@ export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenA
     if (candidate.finishReason === 'MAX_TOKENS') finish_reason = 'length';
     else if (candidate.finishReason === 'TOOL_USE') finish_reason = 'tool_calls';
     else finish_reason = 'stop';
-    const finishChunk = {
+    
+    const clientMetadata = extractClientGroundingMetadata(candidate.groundingMetadata);
+    const finishChunk: any = {
       id: state.id,
       object: 'chat.completion.chunk',
       created: state.created,
       model: state.model,
       choices: [{ index: 0, delta: {}, finish_reason }],
     };
+    if (clientMetadata) {
+      finishChunk.grounding_metadata = clientMetadata;
+    }
+    
     chunksToEmit.push(`data: ${JSON.stringify(finishChunk)}\n\n`);
   }
 

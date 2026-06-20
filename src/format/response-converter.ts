@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import { MIN_SIGNATURE_LENGTH, getModelFamily } from '../constants.js';
 import { cacheSignature, cacheThinkingSignature } from './signature-cache.js';
 import { StandardResponse } from '../api/types.js';
-import { formatGroundingFootnotes } from './grounding-formatter.js';
+import { formatGroundingFootnotes, extractClientGroundingMetadata } from './grounding-formatter.js';
 
 /**
  * Convert Google Generative AI response to Anthropic Messages API format
@@ -122,7 +122,7 @@ export function convertGoogleToAnthropic(googleResponse: StandardResponse | any,
     const promptTokens = usageMetadata.promptTokenCount || 0;
     const cachedTokens = usageMetadata.cachedContentTokenCount || 0;
 
-    return {
+    const anthropicResponse: any = {
         id: `msg_${crypto.randomBytes(16).toString('hex')}`,
         type: 'message',
         role: 'assistant',
@@ -137,4 +137,11 @@ export function convertGoogleToAnthropic(googleResponse: StandardResponse | any,
             cache_creation_input_tokens: 0
         }
     };
+
+    const clientMetadata = extractClientGroundingMetadata(firstCandidate.groundingMetadata);
+    if (clientMetadata) {
+        anthropicResponse.grounding_metadata = clientMetadata;
+    }
+
+    return anthropicResponse;
 }

@@ -9,7 +9,7 @@ import crypto from 'crypto';
 import { MIN_SIGNATURE_LENGTH, getModelFamily } from '../constants.js';
 import { EmptyResponseError } from '../errors.js';
 import { cacheSignature, cacheThinkingSignature } from '../format/signature-cache.js';
-import { formatGroundingFootnotes, GroundingMetadata } from '../format/grounding-formatter.js';
+import { formatGroundingFootnotes, extractClientGroundingMetadata, GroundingMetadata } from '../format/grounding-formatter.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -300,8 +300,7 @@ export async function* streamSSEResponse(response, originalModel) {
         yield { type: 'content_block_stop', index: blockIndex };
     }
 
-    // Emit message_delta and message_stop
-    yield {
+    const messageDeltaEvent: any = {
         type: 'message_delta',
         delta: { stop_reason: stopReason || 'end_turn', stop_sequence: null },
         usage: {
@@ -310,6 +309,13 @@ export async function* streamSSEResponse(response, originalModel) {
             cache_creation_input_tokens: 0
         }
     };
+
+    const clientMetadata = extractClientGroundingMetadata(groundingMetadata);
+    if (clientMetadata) {
+        messageDeltaEvent.grounding_metadata = clientMetadata;
+    }
+
+    yield messageDeltaEvent;
 
     yield { type: 'message_stop' };
 }

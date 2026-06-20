@@ -138,4 +138,8 @@ export interface OpenAIResponse {
     completion_tokens: number;
     total_tokens: number;
   };
+  grounding_metadata?: {
+    search_queries: string[];
+    sources: Array<{ title: string; uri: string }>;
+  };
 }
