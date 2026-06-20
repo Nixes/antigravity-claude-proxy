@@ -21,12 +21,12 @@ What should happen.
 What actually happens.
 
 **Environment**
-- Claude Code version:
+- Client app (Claude Code / OpenClaw / etc) version:
 - antigravity-claude-proxy version:
 - Operating System:
 - Node.js version:
 
-**Claude CLI Configuration**
+**Client Configuration**
 Please provide ONE of the following:
 - Screenshot of WebUI **Settings → Claude CLI** tab, OR
 - Contents of your Claude settings.json file:

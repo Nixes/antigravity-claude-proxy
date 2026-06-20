@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-Node.js proxy that exposes an Anthropic-compatible API backed by Google's Cloud Code service, letting Claude Code CLI use Gemini (and Claude) models via Google accounts with multi-account quota management.
+Node.js proxy that exposes an Anthropic and OpenAI-compatible API backed by Google's Cloud Code service, letting any OpenAI or Anthropic compatible client use Gemini (and Claude) models via Google accounts with multi-account quota management.
 
-Request flow: `Claude Code CLI → Express (server.js) → CloudCode client → Antigravity Cloud Code API`
+Request flow: `Client → Express (server.js) → CloudCode client → Antigravity Cloud Code API`
 
 ## Commands
 
@@ -36,7 +36,7 @@ node tests/test-strategies.cjs       # strategy unit tests (no server needed)
 
 **Quota thresholds** are stored as fractions (0–0.99) but displayed as percentages in the UI. Three-tier resolution: per-model > per-account > global.
 
-**`cache_control` stripping**: Claude Code CLI sends `cache_control` on content blocks; Cloud Code API rejects them. Stripped at the start of `convertAnthropicToGoogle()` before any other processing.
+**`cache_control` stripping**: Clients like Claude Code CLI send `cache_control` on content blocks; Cloud Code API rejects them. Stripped at the start of `convertAnthropicToGoogle()` before any other processing.
 
 **Cross-model thinking signatures**: Claude and Gemini signatures are incompatible. When switching models mid-conversation, mismatched signatures are dropped. Gemini targets: strict (drop unknown). Claude targets: lenient (let Claude validate).
 

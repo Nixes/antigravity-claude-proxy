@@ -365,7 +365,7 @@ function showHelp() {
 │  🛸 Antigravity Claude Proxy v${packageJson.version.padEnd(27)}│
 ╰${'─'.repeat(58)}╯
 
-Route Claude Code CLI through Antigravity's multi-model API
+Route AI clients through Antigravity's multi-model API
 with intelligent load balancing across Google accounts.
 
 USAGE

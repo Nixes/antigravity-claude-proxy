@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/antigravity-claude-proxy.svg)](https://www.npmjs.com/package/antigravity-claude-proxy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A proxy server that exposes an **Anthropic-compatible API** backed by **Antigravity's Cloud Code**, letting you use Claude and Gemini models with **Claude Code CLI** and **OpenClaw / ClawdBot**.
+A proxy server that exposes an **Anthropic and OpenAI-compatible API** backed by **Antigravity's Cloud Code**, letting you use Claude and Gemini models with **Claude Code CLI**, **OpenClaw / ClawdBot**, or any AI client.
 
 ![Antigravity Claude Proxy Banner](images/banner.png)
 
@@ -31,9 +31,9 @@ A proxy server that exposes an **Anthropic-compatible API** backed by **Antigrav
 
 ```
 ┌──────────────────┐     ┌─────────────────────┐     ┌────────────────────────────┐
-│   Claude Code    │────▶│  This Proxy Server  │────▶│  Antigravity Cloud Code    │
-│   (Anthropic     │     │  (Anthropic → Google│     │  (daily-cloudcode-pa.      │
-│    API format)   │     │   Generative AI)    │     │   sandbox.googleapis.com)  │
+│ Any AI Client    │────▶│  This Proxy Server  │────▶│  Antigravity Cloud Code    │
+│ (Anthropic or    │     │  (Anthropic/OpenAI  │     │  (daily-cloudcode-pa.      │
+│  OpenAI format)  │     │   → Google AI)      │     │   sandbox.googleapis.com)  │
 └──────────────────┘     └─────────────────────┘     └────────────────────────────┘
 ```
 

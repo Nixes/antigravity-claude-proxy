@@ -136,7 +136,7 @@ ${controlSection}
 ${border}  ${align(`Configuration:`)}${border}
 ${border}    ${align4(`Storage: ${CONFIG_DIR}`)}${border}
 ║                                                              ║
-║  Usage with Claude Code:                                     ║
+║  Usage with Client Apps (e.g. Claude Code):                  ║
 ${border}    ${align4(`export ANTHROPIC_BASE_URL=http://localhost:${PORT}`)}${border}
 ${border}    ${align4(`export ANTHROPIC_API_KEY=${config.apiKey || 'dummy'}`)}${border}
 ║    claude                                                    ║
