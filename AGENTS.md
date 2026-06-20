@@ -30,6 +30,16 @@ node tests/run-all.cjs <filter>      # run matching tests only
 node tests/test-strategies.cjs       # strategy unit tests (no server needed)
 ```
 
+## Code style
+
+### General
+
+- Avoid the use of global state
+
+### Typescript
+
+- Should avoid the use of the any type and narrow the type as much as possible
+
 ## Non-obvious things
 
 **CSS**: Source is `public/css/src/input.css` (Tailwind + `@apply`). Compiled output is `public/css/style.css` — don't edit the compiled file.
