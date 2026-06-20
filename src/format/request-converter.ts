@@ -252,6 +252,13 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
         }
     }
 
+    // Inject Google Search tool if requested (only supported on Gemini)
+    if (anthropicRequest.google_search === true && isGeminiModel) {
+        googleRequest.tools = googleRequest.tools || [];
+        googleRequest.tools.push({ googleSearch: {} });
+        logger.debug('[RequestConverter] Injected googleSearch tool for Gemini model');
+    }
+
     // Cap max tokens for Gemini models
     if (isGeminiModel && googleRequest.generationConfig.maxOutputTokens > GEMINI_MAX_OUTPUT_TOKENS) {
         logger.debug(`[RequestConverter] Capping Gemini max_tokens from ${googleRequest.generationConfig.maxOutputTokens} to ${GEMINI_MAX_OUTPUT_TOKENS}`);

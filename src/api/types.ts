@@ -35,7 +35,7 @@ export interface StandardRequest {
       thinkingBudget?: number;
     };
   };
-  tools?: [{ functionDeclarations: FunctionDeclaration[] }];
+  tools?: Array<{ functionDeclarations?: FunctionDeclaration[]; googleSearch?: Record<string, unknown> }>;
   toolConfig?: { functionCallingConfig: { mode: string; allowedFunctionNames?: string[] } };
 }
 
@@ -43,6 +43,10 @@ export interface StandardResponse {
   candidates: Array<{
     content: { parts: GPart[] };
     finishReason: 'STOP' | 'MAX_TOKENS' | 'TOOL_USE' | string;
+    groundingMetadata?: {
+      webSearchQueries?: string[];
+      groundingChunks?: Array<{ web?: { uri: string; title: string } }>;
+    };
   }>;
   usageMetadata: {
     promptTokenCount: number;
@@ -86,6 +90,7 @@ export interface IAccountManager {
 
 export interface AnthropicRequest {
   model: string;
+  google_search?: boolean;
   messages: Array<{ role: string, content: unknown }>;
   system?: string | Array<{ type: string, text: string }>;
   max_tokens?: number;
@@ -101,6 +106,7 @@ export interface AnthropicRequest {
 
 export interface OpenAIRequest {
   model: string;
+  google_search?: boolean;
   messages: Array<{ 
     role: string, 
     content: unknown, 

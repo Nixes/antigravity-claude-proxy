@@ -1,5 +1,6 @@
 import { StandardRequest, StandardResponse, StandardStreamChunk, GContent, GPart, OpenAIRequest, OpenAIResponse } from './types.js';
 import { cacheSignature, getCachedSignature } from '../format/signature-cache.js';
+import { formatGroundingFootnotes } from '../format/grounding-formatter.js';
 export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
   if (!req.messages || !Array.isArray(req.messages)) {
     throw new Error('invalid_request_error: messages is required and must be an array');
@@ -125,6 +126,11 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
     }
   }
 
+  if (req.google_search === true) {
+    standardReq.tools = standardReq.tools || [];
+    standardReq.tools.push({ googleSearch: {} });
+  }
+
   if (req.tool_choice) {
     if (req.tool_choice === 'auto') {
       standardReq.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
@@ -182,6 +188,11 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): Open
         cacheSignature(toolCallId, part.thoughtSignature);
       }
     }
+  }
+
+  const footnotes = formatGroundingFootnotes(candidate.groundingMetadata);
+  if (footnotes) {
+    content += footnotes;
   }
 
   let finish_reason = 'stop';
@@ -323,6 +334,18 @@ export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenA
   }
 
   if (candidate.finishReason) {
+    const footnotes = formatGroundingFootnotes(candidate.groundingMetadata);
+    if (footnotes) {
+      const footnoteChunk = {
+        id: state.id,
+        object: 'chat.completion.chunk',
+        created: state.created,
+        model: state.model,
+        choices: [{ index: 0, delta: { content: footnotes }, finish_reason: null }],
+      };
+      chunksToEmit.push(`data: ${JSON.stringify(footnoteChunk)}\n\n`);
+    }
+
     if (state.isThinking) {
       const closeThinkChunk = {
         id: state.id,

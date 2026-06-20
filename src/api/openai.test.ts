@@ -228,6 +228,19 @@ describe('parseOpenAIRequest', () => {
       expect(res.model).toBe('gpt-4o');
     });
   });
+
+  describe('Google Search Grounding', () => {
+    it('injects googleSearch tool if google_search is true', () => {
+      const res = parseOpenAIRequest({ model: 'gemini-2.5-pro', messages: [], google_search: true });
+      expect(res.tools).toBeDefined();
+      expect(res.tools).toContainEqual({ googleSearch: {} });
+    });
+
+    it('does not inject googleSearch if google_search is omitted', () => {
+      const res = parseOpenAIRequest({ model: 'gemini-2.5-pro', messages: [] });
+      expect(res.tools).toBeUndefined();
+    });
+  });
 });
 
 describe('formatOpenAIResponse', () => {
@@ -305,6 +318,20 @@ describe('formatOpenAIResponse', () => {
   it('generates an id prefixed with "chatcmpl-"', () => {
     const res = formatOpenAIResponse({ candidates: [], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
     expect(res.id.startsWith('chatcmpl-')).toBe(true);
+  });
+
+  describe('Google Search Grounding', () => {
+    it('appends footnotes to content if groundingMetadata is present', () => {
+      const res = formatOpenAIResponse({ 
+        candidates: [{ 
+          content: { parts: [{ text: 'Answer' }] }, 
+          finishReason: 'STOP',
+          groundingMetadata: { groundingChunks: [{ web: { uri: 'https://example.com', title: 'Example' } }] }
+        }], 
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } 
+      }, 'test-model');
+      expect(res.choices[0].message.content).toContain('Answer\n\n---\n**Search Sources:**\n1. [Example](https://example.com)');
+    });
   });
 });
 
@@ -395,6 +422,29 @@ describe('formatOpenAIStreamChunk', () => {
     const res2 = formatOpenAIStreamChunk(chunk2, state) as string;
     expect(res2).toContain('\\n</think>\\n\\n done');
     expect(state.isThinking).toBe(false);
+  });
+
+  describe('Google Search Grounding', () => {
+    it('emits an extra chunk for footnotes before finish reason chunk', () => {
+      const state = makeState(true);
+      const chunk = { 
+        candidates: [{ 
+          finishReason: 'STOP',
+          groundingMetadata: { groundingChunks: [{ web: { uri: 'https://example.com', title: 'Example' } }] }
+        }] 
+      };
+      const res = formatOpenAIStreamChunk(chunk, state) as string;
+      expect(res).not.toBeNull();
+      
+      const dataLines = res.split('\n\n').filter(l => l.startsWith('data: '));
+      expect(dataLines).toHaveLength(2);
+      
+      const footnoteChunk = JSON.parse(dataLines[0].replace('data: ', ''));
+      expect(footnoteChunk.choices[0].delta.content).toContain('Search Sources');
+      
+      const finishChunk = JSON.parse(dataLines[1].replace('data: ', ''));
+      expect(finishChunk.choices[0].finish_reason).toBe('stop');
+    });
   });
 });
 

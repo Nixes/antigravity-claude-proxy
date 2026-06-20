@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import { MIN_SIGNATURE_LENGTH, getModelFamily } from '../constants.js';
 import { EmptyResponseError } from '../errors.js';
 import { cacheSignature, cacheThinkingSignature } from '../format/signature-cache.js';
+import { formatGroundingFootnotes, GroundingMetadata } from '../format/grounding-formatter.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -28,6 +29,7 @@ export async function* streamSSEResponse(response, originalModel) {
     let outputTokens = 0;
     let cacheReadTokens = 0;
     let stopReason = null;
+    let groundingMetadata: GroundingMetadata | undefined;
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -63,6 +65,10 @@ export async function* streamSSEResponse(response, originalModel) {
                 const firstCandidate = candidates[0] || {};
                 const content = firstCandidate.content || {};
                 const parts = content.parts || [];
+
+                if (firstCandidate.groundingMetadata) {
+                    groundingMetadata = firstCandidate.groundingMetadata;
+                }
 
                 // Emit message_start on first data
                 // Note: input_tokens = promptTokenCount - cachedContentTokenCount (Antigravity includes cached in total)
@@ -276,6 +282,22 @@ export async function* streamSSEResponse(response, originalModel) {
             }
             yield { type: 'content_block_stop', index: blockIndex };
         }
+    }
+
+    const footnotes = formatGroundingFootnotes(groundingMetadata);
+    if (footnotes) {
+        blockIndex++;
+        yield {
+            type: 'content_block_start',
+            index: blockIndex,
+            content_block: { type: 'text', text: '' }
+        };
+        yield {
+            type: 'content_block_delta',
+            index: blockIndex,
+            delta: { type: 'text_delta', text: footnotes }
+        };
+        yield { type: 'content_block_stop', index: blockIndex };
     }
 
     // Emit message_delta and message_stop

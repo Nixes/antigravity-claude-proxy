@@ -6,6 +6,8 @@
 import crypto from 'crypto';
 import { MIN_SIGNATURE_LENGTH, getModelFamily } from '../constants.js';
 import { cacheSignature, cacheThinkingSignature } from './signature-cache.js';
+import { StandardResponse } from '../api/types.js';
+import { formatGroundingFootnotes } from './grounding-formatter.js';
 
 /**
  * Convert Google Generative AI response to Anthropic Messages API format
@@ -14,7 +16,7 @@ import { cacheSignature, cacheThinkingSignature } from './signature-cache.js';
  * @param {string} model - The model name used
  * @returns {Object} Anthropic format response
  */
-export function convertGoogleToAnthropic(googleResponse, model) {
+export function convertGoogleToAnthropic(googleResponse: StandardResponse | any, model: string): any {
     // Handle the response wrapper
     const response = googleResponse.response || googleResponse;
 
@@ -81,6 +83,24 @@ export function convertGoogleToAnthropic(googleResponse, model) {
                     data: part.inlineData.data
                 }
             });
+        }
+    }
+
+    // Append grounding footnotes to the last text block if available
+    const footnotes = formatGroundingFootnotes(firstCandidate.groundingMetadata);
+    if (footnotes) {
+        let lastTextBlock = null;
+        for (let i = anthropicContent.length - 1; i >= 0; i--) {
+            if (anthropicContent[i].type === 'text') {
+                lastTextBlock = anthropicContent[i];
+                break;
+            }
+        }
+        
+        if (lastTextBlock) {
+            lastTextBlock.text += footnotes;
+        } else {
+            anthropicContent.push({ type: 'text', text: footnotes });
         }
     }
 

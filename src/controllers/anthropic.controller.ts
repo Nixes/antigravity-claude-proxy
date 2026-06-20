@@ -37,7 +37,8 @@ anthropicRouter.post('/messages', async (req, res) => {
             thinking,
             top_p,
             top_k,
-            temperature
+            temperature,
+            google_search
         } = req.body;
 
         // Resolve model mapping if configured
@@ -98,7 +99,8 @@ anthropicRouter.post('/messages', async (req, res) => {
             thinking,
             top_p,
             top_k,
-            temperature
+            temperature,
+            google_search
         };
 
         logger.info(`[API] Request for model: ${request.model}, stream: ${!!stream}`);

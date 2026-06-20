@@ -49,6 +49,20 @@ A proxy server that exposes an **Anthropic-compatible API** backed by **Antigrav
 - **Strict TypeScript Architecture**: The entire data pipeline (Request builders, SSE stream parsers, content converters) is fully strictly-typed for enterprise-grade reliability and zero implicit cast crashes.
 - **Multi-Account Load Balancing**: Automatically cycle through multiple accounts to bypass rate limits.
 - **Anthropic & OpenAI Compatible Endpoints**: Supports `/v1/messages` and `/v1/chat/completions`.
+- **Google Search Grounding Support**: Pass `google_search: true` in your API requests to enable real-time web search grounding with automatic markdown footnotes for Gemini models.
+  <details>
+  <summary><strong>Example: OpenAI /chat/completions Request</strong></summary>
+
+  ```json
+  {
+    "model": "gemini-2.5-pro",
+    "messages": [
+      { "role": "user", "content": "What is the weather in Tokyo today?" }
+    ],
+    "google_search": true
+  }
+  ```
+  </details>
 
 ## Prerequisites
 
