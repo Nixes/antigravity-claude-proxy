@@ -1,5 +1,5 @@
 $body = @{
-    model = "gemini-2.5-pro"
+    model = "gemini-3.1-flash-lite"
     messages = @(
         @{ role = "user"; content = "What are the top 3 news headlines today?" }
     )
