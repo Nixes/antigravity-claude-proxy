@@ -15,14 +15,13 @@ import {
     EXTENDED_COOLDOWN_MS,
     CAPACITY_BACKOFF_TIERS_MS,
     MAX_CAPACITY_RETRIES,
-    BACKOFF_BY_ERROR_TYPE,
     BACKOFF_BY_ERROR_TYPE
 } from '../constants.js';
 import { convertGoogleToAnthropic } from '../format/index.js';
 import { isRateLimitError, isAuthError, isAccountForbiddenError, AccountForbiddenError } from '../errors.js';
 import { formatDuration, sleep, isNetworkError, throttledFetch } from '../utils/helpers.js';
 import { logger } from '../utils/logger.js';
-import { convertAnthropicToGoogle, convertRole } from '../format/request-converter.js';
+import { convertAnthropicToGoogle } from '../format/request-converter.js';
 import { formatAnthropicResponse } from '../api/anthropic.js';
 import { isThinkingModel } from '../constants.js';
 import { getFallbackModel } from '../fallback-config.js';
@@ -162,7 +161,7 @@ export async function sendMessageStandard(standardRequest: StandardRequest, acco
 
                     const response = await throttledFetch(url, {
                         method: 'POST',
-                        headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json', payload.request.sessionId),
+                        headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json', (payload.request as any).sessionId),
                         body: JSON.stringify(payload)
                     });
 
@@ -296,7 +295,7 @@ export async function sendMessageStandard(standardRequest: StandardRequest, acco
                             if (response.status === 403 && isValidationRequired(errorText)) {
                                 const verifyUrl = extractVerificationUrl(errorText);
                                 logger.warn(`[CloudCode] 403 VALIDATION_REQUIRED/PERMISSION_DENIED for ${account.email}, marking invalid and rotating account...`);
-                                accountManager.markInvalid(account.email, 'Account requires verification', verifyUrl);
+                                accountManager.markInvalid(account.email, 'Account requires verification', verifyUrl || undefined);
                                 throw new AccountForbiddenError(errorText, account.email);
                             }
 
@@ -338,7 +337,7 @@ export async function sendMessageStandard(standardRequest: StandardRequest, acco
                     accountManager.notifySuccess(account, model);
                     return data;
 
-                } catch (endpointError) {
+                } catch (endpointError: any) {
                     if (isRateLimitError(endpointError)) {
                         throw endpointError; // Re-throw to trigger account switch
                     }
@@ -366,7 +365,7 @@ export async function sendMessageStandard(standardRequest: StandardRequest, acco
                 throw lastError;
             }
 
-        } catch (error) {
+        } catch (error: any) {
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, notify strategy and continue to next account
                 accountManager.notifyRateLimit(account, model);
@@ -552,7 +551,7 @@ export async function sendMessage(anthropicRequest: AnthropicRequest, accountMan
 
                     const response = await throttledFetch(url, {
                         method: 'POST',
-                        headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json', payload.request.sessionId),
+                        headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json', (payload.request as any).sessionId),
                         body: JSON.stringify(payload)
                     });
 
@@ -686,7 +685,7 @@ export async function sendMessage(anthropicRequest: AnthropicRequest, accountMan
                             if (response.status === 403 && isValidationRequired(errorText)) {
                                 const verifyUrl = extractVerificationUrl(errorText);
                                 logger.warn(`[CloudCode] 403 VALIDATION_REQUIRED/PERMISSION_DENIED for ${account.email}, marking invalid and rotating account...`);
-                                accountManager.markInvalid(account.email, 'Account requires verification', verifyUrl);
+                                accountManager.markInvalid(account.email, 'Account requires verification', verifyUrl || undefined);
                                 throw new AccountForbiddenError(errorText, account.email);
                             }
 
@@ -728,7 +727,7 @@ export async function sendMessage(anthropicRequest: AnthropicRequest, accountMan
                     accountManager.notifySuccess(account, model);
                     return convertGoogleToAnthropic(data, anthropicRequest.model);
 
-                } catch (endpointError) {
+                } catch (endpointError: any) {
                     if (isRateLimitError(endpointError)) {
                         throw endpointError; // Re-throw to trigger account switch
                     }
@@ -756,7 +755,7 @@ export async function sendMessage(anthropicRequest: AnthropicRequest, accountMan
                 throw lastError;
             }
 
-        } catch (error) {
+        } catch (error: any) {
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, notify strategy and continue to next account
                 accountManager.notifyRateLimit(account, model);

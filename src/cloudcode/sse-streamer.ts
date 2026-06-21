@@ -16,10 +16,10 @@ import { logger } from '../utils/logger.js';
  * Stream SSE response and yield Anthropic-format events
  *
  * @param {Response} response - The HTTP response with SSE body
- * @param {string} originalModel - The original model name
+ * @param {string} originalModel: string - The original model name
  * @yields {Object} Anthropic-format SSE events
  */
-export async function* streamSSEResponse(response, originalModel) {
+export async function* streamSSEResponse(response: Response, originalModel: string) {
     const messageId = `msg_${crypto.randomBytes(16).toString('hex')}`;
     let hasEmittedStart = false;
     let blockIndex = 0;
@@ -31,7 +31,7 @@ export async function* streamSSEResponse(response, originalModel) {
     let stopReason = null;
     let groundingMetadata: GroundingMetadata | undefined;
 
-    const reader = response.body.getReader();
+    const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -187,7 +187,7 @@ export async function* streamSSEResponse(response, originalModel) {
 
                         // For Gemini, include the thoughtSignature in the tool_use block
                         // so it can be sent back in subsequent requests
-                        const toolUseBlock = {
+                        const toolUseBlock: any = {
                             type: 'tool_use',
                             id: toolId,
                             name: part.functionCall.name,
@@ -260,7 +260,7 @@ export async function* streamSSEResponse(response, originalModel) {
                     }
                 }
 
-            } catch (parseError) {
+            } catch (parseError: any) {
                 logger.warn('[CloudCode] SSE parse error:', parseError.message);
             }
         }

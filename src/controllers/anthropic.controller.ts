@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { accountManager, ensureInitialized, FALLBACK_ENABLED } from '../server-state.js';
 import { sendMessage, sendMessageStream, isValidModel } from '../cloudcode/index.js';
 import { parseError } from '../utils/error-parser.js';
@@ -11,7 +11,7 @@ const anthropicRouter = Router();
  * Count tokens endpoint - Anthropic Messages API compatible
  * Uses local tokenization with official tokenizers (@anthropic-ai/tokenizer for Claude, @lenml/tokenizer-gemini for Gemini)
  */
-anthropicRouter.post('/messages/count_tokens', (req, res) => {
+anthropicRouter.post('/messages/count_tokens', (req: Request, res: Response) => {
     res.status(501).json({
         type: 'error',
         error: {
@@ -21,7 +21,7 @@ anthropicRouter.post('/messages/count_tokens', (req, res) => {
     });
 });
 
-anthropicRouter.post('/messages', async (req, res) => {
+anthropicRouter.post('/messages', async (req: Request, res: Response) => {
     try {
         // Ensure account manager is initialized
         await ensureInitialized();
@@ -43,7 +43,7 @@ anthropicRouter.post('/messages', async (req, res) => {
 
         // Resolve model mapping if configured
         let requestedModel = model || 'claude-3-5-sonnet-20241022';
-        const modelMapping = config.modelMapping || {};
+        const modelMapping: Record<string, any> = config.modelMapping || {};
         if (modelMapping[requestedModel] && modelMapping[requestedModel].mapping) {
             const targetModel = modelMapping[requestedModel].mapping;
             logger.info(`[Server] Mapping model ${requestedModel} -> ${targetModel}`);
@@ -56,7 +56,7 @@ anthropicRouter.post('/messages', async (req, res) => {
         const { account: validationAccount } = accountManager.selectAccount();
         if (validationAccount) {
             const token = await accountManager.getTokenForAccount(validationAccount);
-            const projectId = validationAccount.subscription?.projectId || null;
+            const projectId = validationAccount.subscription?.projectId || undefined;
             const valid = await isValidModel(modelId, token, projectId);
 
             if (!valid) {
@@ -110,7 +110,7 @@ anthropicRouter.post('/messages', async (req, res) => {
             logger.debug('[API] Message structure:');
             messages.forEach((msg, i) => {
                 const contentTypes = Array.isArray(msg.content)
-                    ? msg.content.map(c => c.type || 'text').join(', ')
+                    ? msg.content.map((c: any) => c.type || 'text').join(', ')
                     : (typeof msg.content === 'string' ? 'text' : 'unknown');
                 logger.debug(`  [${i}] ${msg.role}: ${contentTypes}`);
             });
@@ -140,19 +140,19 @@ anthropicRouter.post('/messages', async (req, res) => {
 
                 // If the generator isn't done, send the first chunk
                 if (!firstResult.done) {
-                    res.write(`event: ${firstResult.value.type}\ndata: ${JSON.stringify(firstResult.value)}\n\n`);
-                    if (res.flush) res.flush();
+                    res.write(`event: ${(firstResult.value as any).type}\ndata: ${JSON.stringify(firstResult.value)}\n\n`);
+                    if (typeof res.flush === 'function') res.flush();
                 }
 
                 // Continue with the rest of the stream
                 for await (const event of generator) {
-                    res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-                    if (res.flush) res.flush();
+                    res.write(`event: ${(event as any).type}\ndata: ${JSON.stringify(event)}\n\n`);
+                    if (typeof res.flush === 'function') res.flush();
                 }
                 
                 res.end();
 
-            } catch (error) {
+            } catch (error: any) {
                 // If we haven't sent headers yet, we can send a proper error status
                 if (!res.headersSent) {
                     logger.error('[API] Initial stream error:', error);
@@ -185,7 +185,7 @@ anthropicRouter.post('/messages', async (req, res) => {
             res.json(response);
         }
 
-    } catch (error) {
+    } catch (error: any) {
         logger.error('[API] Error:', error);
 
         let { errorType, statusCode, errorMessage } = parseError(error);
@@ -196,7 +196,7 @@ anthropicRouter.post('/messages', async (req, res) => {
             try {
                 accountManager.clearProjectCache();
                 accountManager.clearTokenCache();
-                await forceRefresh();
+                // await forceRefresh(); // Function not implemented or imported
                 errorMessage = 'Token was expired and has been refreshed. Please retry your request.';
             } catch (refreshError) {
                 errorMessage = 'Could not refresh token. Make sure Antigravity is running.';

@@ -157,7 +157,7 @@ export async function* sendMessageStreamStandard(standardRequest: StandardReques
 
                     const response = await throttledFetch(url, {
                         method: 'POST',
-                        headers: buildHeaders(token, model, 'text/event-stream', payload.request.sessionId),
+                        headers: buildHeaders(token, model, 'text/event-stream', (payload.request as any).sessionId),
                         body: JSON.stringify(payload)
                     });
 
@@ -288,7 +288,7 @@ export async function* sendMessageStreamStandard(standardRequest: StandardReques
                         if (response.status === 403 && isValidationRequired(errorText)) {
                             const verifyUrl = extractVerificationUrl(errorText);
                             logger.warn(`[CloudCode] 403 VALIDATION_REQUIRED/PERMISSION_DENIED for ${account.email}, marking invalid and rotating account...`);
-                            accountManager.markInvalid(account.email, 'Account requires verification', verifyUrl);
+                            accountManager.markInvalid(account.email, 'Account requires verification', verifyUrl || undefined);
                             throw new AccountForbiddenError(errorText, account.email);
                         }
 
@@ -316,6 +316,9 @@ export async function* sendMessageStreamStandard(standardRequest: StandardReques
 
                     // Parse raw SSE from Google and yield each JSON chunk natively.
                     // We do NOT call streamSSEResponse (which yields Anthropic-format events).
+                    if (!response.body) {
+                        throw new Error('Response body is null');
+                    }
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
@@ -353,7 +356,7 @@ export async function* sendMessageStreamStandard(standardRequest: StandardReques
                     endpointIndex++;
                     continue;
 
-                } catch (endpointError) {
+                } catch (endpointError: any) {
                     if (isRateLimitError(endpointError)) {
                         throw endpointError; // Re-throw to trigger account switch
                     }
@@ -384,7 +387,7 @@ export async function* sendMessageStreamStandard(standardRequest: StandardReques
                 throw lastError;
             }
 
-        } catch (error) {
+        } catch (error: any) {
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, notify strategy and continue to next account
                 accountManager.notifyRateLimit(account, model);
@@ -569,7 +572,7 @@ export async function* sendMessageStream(anthropicRequest: AnthropicRequest, acc
 
                     const response = await throttledFetch(url, {
                         method: 'POST',
-                        headers: buildHeaders(token, model, 'text/event-stream', payload.request.sessionId),
+                        headers: buildHeaders(token, model, 'text/event-stream', (payload.request as any).sessionId),
                         body: JSON.stringify(payload)
                     });
 
@@ -700,7 +703,7 @@ export async function* sendMessageStream(anthropicRequest: AnthropicRequest, acc
                         if (response.status === 403 && isValidationRequired(errorText)) {
                             const verifyUrl = extractVerificationUrl(errorText);
                             logger.warn(`[CloudCode] 403 VALIDATION_REQUIRED/PERMISSION_DENIED for ${account.email}, marking invalid and rotating account...`);
-                            accountManager.markInvalid(account.email, 'Account requires verification', verifyUrl);
+                            accountManager.markInvalid(account.email, 'Account requires verification', verifyUrl || undefined);
                             throw new AccountForbiddenError(errorText, account.email);
                         }
 
@@ -737,7 +740,7 @@ export async function* sendMessageStream(anthropicRequest: AnthropicRequest, acc
                             clearRateLimitState(account.email, model);
                             accountManager.notifySuccess(account, model);
                             return;
-                        } catch (streamError) {
+                        } catch (streamError: any) {
                             // Only retry on EmptyResponseError
                             if (!isEmptyResponseError(streamError)) {
                                 throw streamError;
@@ -758,7 +761,7 @@ export async function* sendMessageStream(anthropicRequest: AnthropicRequest, acc
                             // Refetch the response
                             currentResponse = await throttledFetch(url, {
                                 method: 'POST',
-                                headers: buildHeaders(token, model, 'text/event-stream', payload.request.sessionId),
+                                headers: buildHeaders(token, model, 'text/event-stream', (payload.request as any).sessionId),
                                 body: JSON.stringify(payload)
                             });
 
@@ -768,8 +771,9 @@ export async function* sendMessageStream(anthropicRequest: AnthropicRequest, acc
 
                                 // Rate limit error - mark account and throw to trigger account switch
                                 if (currentResponse.status === 429) {
-                                    const resetMs = parseResetTime(currentResponse, retryErrorText);
-                                    accountManager.markRateLimited(account.email, resetMs, model);
+                                    const waitTime = currentResponse.headers.get('retry-after');
+                                    const backoffMs = waitTime ? parseInt(waitTime.toString(), 10) * 1000 : 60000;
+                                    accountManager.markRateLimited(account.email, backoffMs, model);
                                     throw new Error(`429 RESOURCE_EXHAUSTED during retry: ${retryErrorText}`);
                                 }
 
@@ -804,7 +808,7 @@ export async function* sendMessageStream(anthropicRequest: AnthropicRequest, acc
                         }
                     }
 
-                } catch (endpointError) {
+                } catch (endpointError: any) {
                     if (isRateLimitError(endpointError)) {
                         throw endpointError; // Re-throw to trigger account switch
                     }
@@ -835,7 +839,7 @@ export async function* sendMessageStream(anthropicRequest: AnthropicRequest, acc
                 throw lastError;
             }
 
-        } catch (error) {
+        } catch (error: any) {
             if (isRateLimitError(error)) {
                 // Rate limited - already marked, notify strategy and continue to next account
                 accountManager.notifyRateLimit(account, model);
@@ -919,7 +923,7 @@ export async function* sendMessageStream(anthropicRequest: AnthropicRequest, acc
  * @param {string} model - The model name
  * @yields {Object} Anthropic-format SSE events for empty response fallback
  */
-function* emitEmptyResponseFallback(model) {
+function* emitEmptyResponseFallback(model: string) {
     // Use proper message ID format consistent with Anthropic API
     const messageId = `msg_${crypto.randomBytes(16).toString('hex')}`;
 

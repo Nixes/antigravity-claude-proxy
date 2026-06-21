@@ -13,11 +13,11 @@ export function buildCloudCodeRequestFromStandard(
   standardRequest: StandardRequest,
   projectId: string | null,
   accountEmail: string
-): Record<string, unknown> {
+): Record<string, any> {
   // Deep clone to avoid mutating the original
   const googleRequest: any = JSON.parse(JSON.stringify(standardRequest));
   
-  googleRequest.sessionId = deriveSessionId(null, accountEmail);
+  googleRequest.sessionId = deriveSessionId(standardRequest, accountEmail);
 
   const systemParts: GPart[] = [
     { text: ANTIGRAVITY_SYSTEM_INSTRUCTION },
@@ -53,7 +53,7 @@ export function buildCloudCodeRequest(
   anthropicRequest: AnthropicRequest,
   projectId: string | null,
   accountEmail: string
-): Record<string, unknown> {
+): Record<string, any> {
   const standardRequest = convertAnthropicToGoogle(anthropicRequest);
   return buildCloudCodeRequestFromStandard(standardRequest, projectId, accountEmail);
 }
@@ -66,7 +66,7 @@ export function buildHeaders(
 ): Record<string, string> {
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
+    
     ...ANTIGRAVITY_HEADERS
   };
 

@@ -57,7 +57,7 @@ export function convertGoogleToAnthropic(googleResponse: StandardResponse | any,
             // Convert functionCall to tool_use
             // Use the id from the response if available, otherwise generate one
             const toolId = part.functionCall.id || `toolu_${crypto.randomBytes(12).toString('hex')}`;
-            const toolUseBlock = {
+            const toolUseBlock: any = {
                 type: 'tool_use',
                 id: toolId,
                 name: part.functionCall.name,
@@ -89,7 +89,7 @@ export function convertGoogleToAnthropic(googleResponse: StandardResponse | any,
     // Append grounding footnotes to the last text block if available
     const footnotes = formatGroundingFootnotes(firstCandidate.groundingMetadata);
     if (footnotes) {
-        let lastTextBlock = null;
+        let lastTextBlock: any = null;
         for (let i = anthropicContent.length - 1; i >= 0; i--) {
             if (anthropicContent[i].type === 'text') {
                 lastTextBlock = anthropicContent[i];

@@ -31,11 +31,11 @@ adminRouter.get('/health', async (req, res) => {
 
         // Get high-level status first
         const status = accountManager.getStatus();
-        const allAccounts = accountManager.getAllAccounts();
+        const allAccounts: import('../api/types.js').Account[] = accountManager.getAllAccounts();
 
         // Fetch quotas for each account in parallel to get detailed model info
         const accountDetails = await Promise.allSettled(
-            allAccounts.map(async (account) => {
+            allAccounts.map(async (account: import('../api/types.js').Account) => {
                 // Check model-specific rate limits
                 const activeModelLimits = Object.entries(account.modelRateLimits || {})
                     .filter(([_, limit]) => limit.isRateLimited && limit.resetTime > Date.now());
@@ -65,11 +65,11 @@ adminRouter.get('/health', async (req, res) => {
 
                 try {
                     const token = await accountManager.getTokenForAccount(account);
-                    const projectId = account.subscription?.projectId || null;
+                    const projectId = account.subscription?.projectId || undefined;
                     const quotas = await getModelQuotas(token, projectId);
 
                     // Format quotas for readability
-                    const formattedQuotas = {};
+                    const formattedQuotas: Record<string, any> = {};
                     for (const [modelId, info] of Object.entries(quotas)) {
                         formattedQuotas[modelId] = {
                             remaining: info.remainingFraction !== null ? `${Math.round(info.remainingFraction * 100)}%` : 'N/A',
@@ -83,11 +83,11 @@ adminRouter.get('/health', async (req, res) => {
                         status: isRateLimited ? 'rate-limited' : 'ok',
                         models: formattedQuotas
                     };
-                } catch (error) {
+                } catch (error: unknown) {
                     return {
                         ...baseInfo,
                         status: 'error',
-                        error: error.message,
+                        error: error instanceof Error ? error.message : String(error),
                         models: {}
                     };
                 }
@@ -123,11 +123,11 @@ adminRouter.get('/health', async (req, res) => {
             accounts: detailedAccounts
         });
 
-    } catch (error) {
+    } catch (error: unknown) {
         logger.error('[API] Health check failed:', error);
         res.status(503).json({
             status: 'error',
-            error: error.message,
+            error: error instanceof Error ? error.message : String(error),
             timestamp: new Date().toISOString()
         });
     }
@@ -141,13 +141,13 @@ adminRouter.get('/health', async (req, res) => {
 adminRouter.get('/account-limits', async (req, res) => {
     try {
         await ensureInitialized();
-        const allAccounts = accountManager.getAllAccounts();
+        const allAccounts: import('../api/types.js').Account[] = accountManager.getAllAccounts();
         const format = req.query.format || 'json';
         const includeHistory = req.query.includeHistory === 'true';
 
         // Fetch quotas for each account in parallel
         const results = await Promise.allSettled(
-            allAccounts.map(async (account) => {
+            allAccounts.map(async (account: import('../api/types.js').Account) => {
                 // Skip invalid accounts
                 if (account.isInvalid) {
                     return {
@@ -165,7 +165,7 @@ adminRouter.get('/account-limits', async (req, res) => {
                     const subscription = await getSubscriptionTier(token);
 
                     // Then fetch quotas with project ID for accurate quota info
-                    const quotas = await getModelQuotas(token, subscription.projectId);
+                    const quotas = await getModelQuotas(token, subscription.projectId || undefined);
 
                     // Update account object with fresh data
                     account.subscription = {
@@ -189,9 +189,9 @@ adminRouter.get('/account-limits', async (req, res) => {
                         subscription: account.subscription,
                         models: quotas
                     };
-                } catch (error) {
+                } catch (error: unknown) {
                     // Detect ToS ban from quota/subscription fetch and mark account invalid
-                    if (error.message?.startsWith('ACCOUNT_BANNED:')) {
+                    if (error instanceof Error && error.message?.startsWith('ACCOUNT_BANNED:')) {
                         accountManager.markInvalid(account.email, 'Account banned — Gemini disabled for Terms of Service violation');
                         return {
                             email: account.email,
@@ -204,7 +204,7 @@ adminRouter.get('/account-limits', async (req, res) => {
                     return {
                         email: account.email,
                         status: 'error',
-                        error: error.message,
+                        error: error instanceof Error ? error.message : String(error),
                         subscription: account.subscription || { tier: 'unknown', projectId: null },
                         models: {}
                     };
@@ -227,7 +227,7 @@ adminRouter.get('/account-limits', async (req, res) => {
         });
 
         // Collect all unique model IDs
-        const allModelIds = new Set();
+        const allModelIds = new Set<string>();
         for (const account of accountLimits) {
             for (const modelId of Object.keys(account.models || {})) {
                 allModelIds.add(modelId);
@@ -276,7 +276,7 @@ adminRouter.get('/account-limits', async (req, res) => {
                     const models = accLimit?.models || {};
                     const modelCount = Object.keys(models).length;
                     const exhaustedCount = Object.values(models).filter(
-                        q => q.remainingFraction === 0 || q.remainingFraction === null
+                        (q) => q.remainingFraction === 0 || q.remainingFraction === null
                     ).length;
 
                     if (exhaustedCount === 0) {
@@ -287,8 +287,8 @@ adminRouter.get('/account-limits', async (req, res) => {
                 }
 
                 // Get reset time from quota API
-                const claudeModel = sortedModels.find(m => m.includes('claude'));
-                const quota = claudeModel && accLimit?.models?.[claudeModel];
+                const claudeModel = sortedModels.find((m) => m.includes('claude'));
+                const quota = claudeModel && (accLimit?.models as Record<string, any>)?.[claudeModel];
                 const resetTime = quota?.resetTime
                     ? new Date(quota.resetTime).toLocaleString()
                     : '-';
@@ -306,7 +306,7 @@ adminRouter.get('/account-limits', async (req, res) => {
             lines.push('');
 
             // Calculate column widths - need more space for reset time info
-            const modelColWidth = Math.max(28, ...sortedModels.map(m => m.length)) + 2;
+            const modelColWidth = Math.max(28, ...sortedModels.map((m) => m.length)) + 2;
             const accountColWidth = 30;
 
             // Header row
@@ -320,9 +320,9 @@ adminRouter.get('/account-limits', async (req, res) => {
 
             // Data rows
             for (const modelId of sortedModels) {
-                let row = modelId.padEnd(modelColWidth);
+                let row = (modelId as string).padEnd(modelColWidth);
                 for (const acc of accountLimits) {
-                    const quota = acc.models?.[modelId];
+                    const quota = (acc.models as Record<string, any>)?.[modelId];
                     let cell;
                     if (acc.status !== 'ok' && acc.status !== 'rate-limited') {
                         cell = `[${acc.status}]`;
@@ -367,11 +367,11 @@ adminRouter.get('/account-limits', async (req, res) => {
             globalQuotaThreshold: config.globalQuotaThreshold || 0,
             accounts: accountLimits.map(acc => {
                 // Merge quota data with account metadata
-                const metadata = accountMetadataMap.get(acc.email) || {};
+                const metadata: any = accountMetadataMap.get(acc.email) || {};
                 return {
                     email: acc.email,
                     status: acc.status,
-                    error: acc.error || null,
+                    error: (acc as any).error || null,
                     // Include metadata from AccountManager (WebUI needs these)
                     source: metadata.source || 'unknown',
                     enabled: metadata.enabled !== false,
@@ -385,11 +385,11 @@ adminRouter.get('/account-limits', async (req, res) => {
                     quotaThreshold: metadata.quotaThreshold,
                     modelQuotaThresholds: metadata.modelQuotaThresholds || {},
                     // Subscription data (new)
-                    subscription: acc.subscription || metadata.subscription || { tier: 'unknown', projectId: null },
+                    subscription: (acc as any).subscription || metadata.subscription || { tier: 'unknown', projectId: null },
                     // Quota limits
                     limits: Object.fromEntries(
                         sortedModels.map(modelId => {
-                            const quota = acc.models?.[modelId];
+                            const quota = (acc.models as Record<string, any>)?.[modelId];
                             if (!quota) {
                                 return [modelId, null];
                             }
@@ -408,14 +408,14 @@ adminRouter.get('/account-limits', async (req, res) => {
 
         // Optionally include usage history (for dashboard performance optimization)
         if (includeHistory) {
-            responseData.history = usageStats.getHistory();
+            (responseData as { history?: any }).history = usageStats.getHistory();
         }
 
         res.json(responseData);
-    } catch (error) {
+    } catch (error: unknown) {
         res.status(500).json({
             status: 'error',
-            error: error.message
+            error: error instanceof Error ? error.message : String(error)
         });
     }
 });
@@ -436,10 +436,10 @@ adminRouter.post('/refresh-token', async (req, res) => {
             message: 'Token caches cleared and refreshed',
             tokenPrefix: token.substring(0, 10) + '...'
         });
-    } catch (error) {
+    } catch (error: unknown) {
         res.status(500).json({
             status: 'error',
-            error: error.message
+            error: error instanceof Error ? error.message : String(error)
         });
     }
 });

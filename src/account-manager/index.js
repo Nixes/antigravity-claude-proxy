@@ -124,7 +124,7 @@ export class AccountManager {
     /**
      * Get list of available (non-rate-limited, non-invalid) accounts
      * @param {string} [modelId] - Optional model ID
-     * @returns {Array<Object>} Array of available account objects
+     * @returns {import('../api/types.js').Account[]} Array of available account objects
      */
     getAvailableAccounts(modelId = null) {
         return getAvailable(this.#accounts, modelId);
@@ -132,7 +132,7 @@ export class AccountManager {
 
     /**
      * Get list of invalid accounts
-     * @returns {Array<Object>} Array of invalid account objects
+     * @returns {import('../api/types.js').Account[]} Array of invalid account objects
      */
     getInvalidAccounts() {
         return getInvalid(this.#accounts);
@@ -175,7 +175,7 @@ export class AccountManager {
      * @param {string} [modelId] - Model ID for the request
      * @param {Object} [options] - Additional options
      * @param {string} [options.sessionId] - Session ID for cache continuity
-     * @returns {{account: Object|null, waitMs: number}} Account to use and optional wait time
+     * @returns {{account: import('../api/types.js').Account|null, waitMs: number}} Account to use and optional wait time
      */
     selectAccount(modelId = null, options = {}) {
         if (!this.#strategy) {
@@ -426,7 +426,7 @@ export class AccountManager {
 
     /**
      * Get status object for logging/API
-     * @returns {{accounts: Array, settings: Object}} Status object with accounts and settings
+     * @returns {import('../api/types.js').AccountStatus} Status object
      */
     getStatus() {
         const available = this.getAvailableAccounts();
@@ -518,7 +518,7 @@ export class AccountManager {
     /**
      * Get all accounts (internal use for quota fetching)
      * Returns the full account objects including credentials
-     * @returns {Array<Object>} Array of account objects
+     * @returns {import('../api/types.js').Account[]} Array of account objects
      */
     getAllAccounts() {
         return this.#accounts;

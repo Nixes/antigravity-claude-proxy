@@ -24,13 +24,13 @@ modelsRouter.get('/models', async (req, res) => {
         const token = await accountManager.getTokenForAccount(account);
         const models = await listModels(token);
         res.json(models);
-    } catch (error) {
+    } catch (error: unknown) {
         logger.error('[API] Error listing models:', error);
         res.status(500).json({
             type: 'error',
             error: {
                 type: 'api_error',
-                message: error.message
+                message: error instanceof Error ? error.message : String(error)
             }
         });
     }

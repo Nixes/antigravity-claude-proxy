@@ -21,7 +21,7 @@ let accumulatedThinkingText = '';
     let accumulatedThinkingSignature = '';
     let accumulatedText = '';
     const finalParts = [];
-    let usageMetadata = {};
+    let usageMetadata: StandardResponse['usageMetadata'] = { promptTokenCount: 0, candidatesTokenCount: 0 };
     let finishReason = 'STOP';
 
     const flushThinking = () => {
@@ -43,7 +43,7 @@ let accumulatedThinkingText = '';
         }
     };
 
-    const reader = response.body.getReader();
+    const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -97,7 +97,7 @@ let accumulatedThinkingText = '';
                         finalParts.push(part);
                     }
                 }
-            } catch (e) {
+            } catch (e: any) {
                 logger.debug('[CloudCode] SSE parse warning:', e.message, 'Raw:', jsonText.slice(0, 100));
             }
         }
@@ -126,7 +126,7 @@ export async function parseThinkingSSEResponse(response: Response, originalModel
     let accumulatedThinkingSignature = '';
     let accumulatedText = '';
     const finalParts = [];
-    let usageMetadata = {};
+    let usageMetadata: StandardResponse['usageMetadata'] = { promptTokenCount: 0, candidatesTokenCount: 0 };
     let finishReason = 'STOP';
 
     const flushThinking = () => {
@@ -148,7 +148,7 @@ export async function parseThinkingSSEResponse(response: Response, originalModel
         }
     };
 
-    const reader = response.body.getReader();
+    const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -202,7 +202,7 @@ export async function parseThinkingSSEResponse(response: Response, originalModel
                         finalParts.push(part);
                     }
                 }
-            } catch (e) {
+            } catch (e: any) {
                 logger.debug('[CloudCode] SSE parse warning:', e.message, 'Raw:', jsonText.slice(0, 100));
             }
         }

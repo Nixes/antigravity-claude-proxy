@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { accountManager, ensureInitialized, FALLBACK_ENABLED } from '../server-state.js';
 import { sendMessageStandard, sendMessageStreamStandard, isValidModel } from '../cloudcode/index.js';
@@ -13,12 +13,12 @@ const openaiRouter = Router();
  * OpenAI-compatible Completions API
  * POST /v1/chat/completions
  */
-openaiRouter.post('/chat/completions', async (req: any, res: any) => {
+openaiRouter.post('/chat/completions', async (req: Request, res: Response) => {
     try {
         await ensureInitialized();
 
         let requestedModel = req.body.model || 'gpt-4o';
-        const modelMapping = config.modelMapping || {};
+        const modelMapping: Record<string, any> = config.modelMapping || {};
         if (modelMapping[requestedModel] && modelMapping[requestedModel].mapping) {
             const targetModel = modelMapping[requestedModel].mapping;
             logger.info(`[Server] Mapping model ${requestedModel} -> ${targetModel}`);
@@ -33,7 +33,7 @@ openaiRouter.post('/chat/completions', async (req: any, res: any) => {
         const { account: validationAccount } = accountManager.selectAccount();
         if (validationAccount) {
             const token = await accountManager.getTokenForAccount(validationAccount);
-            const projectId = validationAccount.subscription?.projectId || null;
+            const projectId = validationAccount.subscription?.projectId || undefined;
             const valid = await isValidModel(modelId, token, projectId);
 
             if (!valid) {
@@ -73,7 +73,7 @@ openaiRouter.post('/chat/completions', async (req: any, res: any) => {
                     const chunkStr = formatOpenAIStreamChunk(firstResult.value as any, state);
                     if (chunkStr) {
                         res.write(chunkStr);
-                        if (res.flush) res.flush();
+                        if (typeof res.flush === 'function') res.flush();
                     }
                 }
 
@@ -81,7 +81,7 @@ openaiRouter.post('/chat/completions', async (req: any, res: any) => {
                     const chunkStr = formatOpenAIStreamChunk(event as any, state);
                     if (chunkStr) {
                         res.write(chunkStr);
-                        if (res.flush) res.flush();
+                        if (typeof res.flush === 'function') res.flush();
                     }
                 }
                 

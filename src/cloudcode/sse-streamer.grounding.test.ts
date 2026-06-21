@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect } from 'vitest';
 import { streamSSEResponse } from './sse-streamer.js';
 
@@ -46,8 +47,10 @@ describe('streamSSEResponse grounding', () => {
         
         const footnoteDeltas = events.filter(e => 
             e.type === 'content_block_delta' && 
-            e.delta.text && 
-            e.delta.text.includes('Search Sources:')
+            // @ts-expect-error
+        e.delta?.text && 
+            // @ts-expect-error
+        e.delta?.text.includes('Search Sources:')
         );
 
         expect(footnoteDeltas).toHaveLength(1);

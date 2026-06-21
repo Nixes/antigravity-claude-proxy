@@ -60,7 +60,7 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
 
     // Handle system instruction
     if (system) {
-        let systemParts = [];
+        let systemParts: {text: string}[] = [];
         if (typeof system === 'string') {
             systemParts = [{ text: system }];
         } else if (Array.isArray(system)) {
@@ -111,7 +111,7 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
     }
 
     // Convert messages to contents, then filter unsigned thinking blocks
-    for (const msg of processedMessages) {
+    for (const msg of processedMessages as Array<{ role: string, content: any }>) {
         let msgContent = msg.content;
 
         // For assistant messages, process thinking blocks and reorder content
@@ -168,14 +168,14 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
     if (isThinking) {
         if (isClaudeModel) {
             // Claude thinking config
-            const thinkingConfig = {
+            const thinkingConfig: { include_thoughts: boolean; thinking_budget?: number } = {
                 include_thoughts: true
             };
 
             // Cloud Code API requires thinking_budget to actually produce thinking blocks.
             // Without it, include_thoughts alone is ignored and Claude falls back to
             // <thinking> XML tags in text. Default to 32000 when not provided (e.g. adaptive mode).
-            const thinkingBudget = thinking?.budget_tokens || 32000;
+            const thinkingBudget = (thinking as { budget_tokens?: number })?.budget_tokens || 32000;
             thinkingConfig.thinking_budget = thinkingBudget;
             logger.debug(`[RequestConverter] Claude thinking enabled with budget: ${thinkingBudget}${!thinking?.budget_tokens ? ' (default)' : ''}`);
 
@@ -208,7 +208,7 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
 
     // Convert tools to Google format
     if (tools && tools.length > 0) {
-        const functionDeclarations = tools.map((tool, idx) => {
+        const functionDeclarations = tools.map((tool: any, idx: number) => {
             // Extract name from various possible locations
             const name = tool.name || tool.function?.name || tool.custom?.name || `tool-${idx}`;
 

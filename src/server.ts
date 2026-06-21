@@ -55,7 +55,7 @@ app.use('/v1', (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
         providedKey = authHeader.substring(7);
     } else if (xApiKey) {
-        providedKey = xApiKey;
+        providedKey = Array.isArray(xApiKey) ? xApiKey[0] : xApiKey;
     }
 
     if (!providedKey || providedKey !== config.apiKey) {

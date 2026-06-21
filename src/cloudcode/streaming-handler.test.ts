@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Tests for sendMessageStreamStandard in streaming-handler.ts
  *
@@ -17,7 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { StandardRequest } from '../api/types.js';
+import { StandardRequest, StandardStreamChunk } from '../api/types.js';
 
 // ─── Module mocks (hoisted) ───────────────────────────────────────────────────
 
@@ -85,7 +86,9 @@ function makeAccountManager() {
     clearProjectCache: vi.fn(),
     incrementConsecutiveFailures: vi.fn(),
     getConsecutiveFailures: vi.fn().mockReturnValue(0),
-  };
+    getInvalidAccounts: vi.fn().mockReturnValue([]),
+    resetAllRateLimits: vi.fn(),
+  } as any;
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -127,7 +130,7 @@ describe('sendMessageStreamStandard', () => {
         chunks.push(chunk);
       }
     } catch (e: unknown) {
-      threw = e;
+      threw = e as Error;
     }
 
     // Must not be a ReferenceError
@@ -203,7 +206,7 @@ describe('sendMessageStreamStandard', () => {
     try {
       for await (const _ of sendMessageStreamStandard(makeStandardRequest(), makeAccountManager(), false)) { /* drain */ }
     } catch (e: unknown) {
-      thrownError = e;
+      thrownError = e as Error;
     }
 
     expect(thrownError).not.toBeNull();

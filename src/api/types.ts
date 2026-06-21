@@ -5,6 +5,7 @@ export interface GPart {
   functionCall?: { name: string; args: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
   inlineData?: { mimeType: string; data: string };
+  fileData?: { mimeType: string; fileUri: string };
 }
 
 export interface GContent {
@@ -20,6 +21,7 @@ export interface FunctionDeclaration {
 
 export interface StandardRequest {
   model: string;
+  sessionId?: string;
   contents: GContent[];
   systemInstruction?: { parts: { text: string }[] };
   generationConfig: {
@@ -60,12 +62,33 @@ export type StandardStreamChunk = Partial<StandardResponse>;
 
 export interface Account {
   email: string;
+  source?: string;
+  enabled?: boolean;
+  projectId?: string | null;
+  modelRateLimits?: Record<string, { isRateLimited: boolean, resetTime: number }>;
+  isInvalid?: boolean;
   invalidReason?: string;
   invalidAt?: number;
   verifyUrl?: string | null;
+  lastUsed?: string | number;
+  quotaThreshold?: number;
+  modelQuotaThresholds?: Record<string, number>;
+  subscription?: { tier: string; projectId: string | null; detectedAt?: number };
+  quota?: { models: Record<string, any>; lastChecked: number };
+}
+
+export interface AccountStatus {
+  total: number;
+  available: number;
+  rateLimited: number;
+  invalid: number;
+  summary: string;
+  accounts: Account[];
 }
 
 export interface IAccountManager {
+  getStatus(): AccountStatus;
+  getAllAccounts(): Account[];
   getAccountCount(): number;
   clearExpiredLimits(): void;
   getAvailableAccounts(model: string): Account[];
@@ -121,6 +144,7 @@ export interface OpenAIRequest {
   top_p?: number;
   tools?: unknown[];
   tool_choice?: unknown;
+  stop?: string | string[];
 }
 
 export interface OpenAIResponse {
@@ -138,4 +162,12 @@ export interface OpenAIResponse {
     completion_tokens: number;
     total_tokens: number;
   };
+}
+
+declare global {
+  namespace Express {
+    export interface Response {
+      flush?: () => void;
+    }
+  }
 }

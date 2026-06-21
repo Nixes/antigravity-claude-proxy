@@ -1,5 +1,6 @@
 import { AccountManager } from './account-manager/index.js';
 import { logger } from './utils/logger.js';
+import { AccountStatus } from './api/types.js';
 
 // Parse fallback flag directly from command line args to avoid circular dependency
 const args = process.argv.slice(2);
@@ -34,9 +35,9 @@ export async function ensureInitialized() {
 
     initPromise = (async () => {
         try {
-            await accountManager.initialize(STRATEGY_OVERRIDE);
+            await accountManager.initialize(STRATEGY_OVERRIDE || undefined);
             isInitialized = true;
-            const status = accountManager.getStatus();
+            const status: AccountStatus = accountManager.getStatus();
             logger.success(`[Server] Account pool initialized: ${status.summary}`);
         } catch (error: any) {
             initError = error;

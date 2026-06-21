@@ -72,7 +72,7 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
     }
 
     if (msg.role === 'tool') {
-      const functionName = toolCallIdToName.get(msg.tool_call_id) || 'unknown_function';
+      const functionName = toolCallIdToName.get(msg.tool_call_id || '') || 'unknown_function';
       parts.push({
         functionResponse: {
           name: functionName,
@@ -117,11 +117,11 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
 
   if (req.tools && Array.isArray(req.tools)) {
     const functionDeclarations = req.tools
-      .filter((t: unknown) => (t as any).type === 'function')
+      .filter((t: unknown) => (t as { type?: string }).type === 'function')
       .map((t: unknown) => ({
-        name: (t as any).function.name,
-        description: (t as any).function.description || '',
-        parameters: (t as any).function.parameters || { type: 'object' },
+        name: (t as { function: { name: string, description?: string, parameters?: any } }).function.name,
+        description: (t as { function: { name: string, description?: string, parameters?: any } }).function.description || '',
+        parameters: (t as { function: { name: string, description?: string, parameters?: any } }).function.parameters || { type: 'object' },
       }));
     if (functionDeclarations.length > 0) {
       standardReq.tools = [{ functionDeclarations }];
@@ -141,11 +141,11 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
       standardReq.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
     } else if (req.tool_choice === 'required') {
       standardReq.toolConfig = { functionCallingConfig: { mode: 'ANY' } };
-    } else if (typeof req.tool_choice === 'object' && (req.tool_choice as any).type === 'function') {
+    } else if (typeof req.tool_choice === 'object' && (req.tool_choice as { type?: string }).type === 'function') {
       standardReq.toolConfig = {
         functionCallingConfig: {
           mode: 'ANY',
-          allowedFunctionNames: [(req.tool_choice as any).function.name],
+          allowedFunctionNames: [(req.tool_choice as { function: { name: string } }).function.name],
         },
       };
     }
