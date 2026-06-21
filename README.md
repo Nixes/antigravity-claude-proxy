@@ -322,6 +322,31 @@ Without this, the WebUI's Claude CLI tab won't be able to read or write your Cla
 
 ---
 
+## Environment Variables
+
+The proxy server can be configured using the following environment variables.
+> **Note to Contributors:** If you add a new environment variable, please ensure it is documented here.
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `PORT` | Port for the proxy server to listen on. | `8080` |
+| `HOST` | Bind address for the proxy server. | `0.0.0.0` |
+| `ACCOUNT_STRATEGY` | Strategy for selecting an account (`sticky`, `round-robin`, `hybrid`). | `hybrid` |
+| `API_KEY` | Required API key to protect proxy endpoints. Recommended for public instances. | (None) |
+| `WEBUI_PASSWORD` | Password protection for the web UI. | (None) |
+| `DEBUG` | Set to `true` to enable debug logging. | `false` |
+| `DEV_MODE` | Set to `true` to enable development mode features and dev tools. | `false` |
+| `FORCE_GOOGLE_SEARCH`| Set to `true` to force Google Search grounding globally for compatible models. | `false` |
+| `OAUTH_CALLBACK_PORT`| Port for the local OAuth callback listener during account addition. | `51121` |
+| `FALLBACK` | Set to `true` to enable falling back to alternate models on quota exhaustion. | `false` |
+| `CLAUDE_CONFIG_PATH` | Path to the user's `.claude` directory, useful when running as a system service. | (None) |
+| `HTTP_PROXY`, etc. | `http_proxy`, `HTTP_PROXY`, `https_proxy`, `HTTPS_PROXY` for routing requests. | (None) |
+| `ANTIGRAVITY_CLIENT_VERSION` | Force a specific Antigravity client version string for requests. | (Auto) |
+| `ANTIGRAVITY_CLIENT_VERSION_FALLBACK` | Override Antigravity client fallback version if auto-detection fails. | `1.110.0` |
+| `FALLBACK_ANTIGRAVITY_VERSION` | Override Antigravity fallback version if auto-detection fails. | `2.0.3` |
+
+---
+
 ## Documentation
 
 - [Available Models](docs/models.md)

@@ -123,6 +123,7 @@ function loadConfig() {
         }
 
         // Environment overrides
+        // REMINDER: If you add new environment variables here, you MUST update the list in README.md!
         if (process.env.API_KEY) config.apiKey = process.env.API_KEY;
         if (process.env.WEBUI_PASSWORD) config.webuiPassword = process.env.WEBUI_PASSWORD;
         if (process.env.DEBUG === 'true') config.debug = true;

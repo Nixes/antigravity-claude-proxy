@@ -18,6 +18,8 @@ import os from 'os';
 const packageVersion = getPackageVersion();
 
 // Parse command line arguments
+// REMINDER: If you add new environment variables here or anywhere in the project, 
+// you MUST update the list in README.md!
 const args = process.argv.slice(2);
 const isDebug = args.includes('--debug') || args.includes('--dev-mode') || process.env.DEBUG === 'true' || process.env.DEV_MODE === 'true';
 const isFallbackEnabled = args.includes('--fallback') || process.env.FALLBACK === 'true';
