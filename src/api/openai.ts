@@ -129,26 +129,32 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
   }
 
   const isGeminiModel = getModelFamily(req.model) === 'gemini';
+  let addedGoogleSearch = false;
   if ((req.google_search === true || config.forceGoogleSearch) && isGeminiModel) {
     standardReq.tools = standardReq.tools || [];
     standardReq.tools.push({ googleSearch: {} });
+    addedGoogleSearch = true;
   }
 
   if (req.tool_choice) {
+    standardReq.toolConfig = standardReq.toolConfig || {};
     if (req.tool_choice === 'auto') {
-      standardReq.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+      standardReq.toolConfig.functionCallingConfig = { mode: 'AUTO' };
     } else if (req.tool_choice === 'none') {
-      standardReq.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
+      standardReq.toolConfig.functionCallingConfig = { mode: 'NONE' };
     } else if (req.tool_choice === 'required') {
-      standardReq.toolConfig = { functionCallingConfig: { mode: 'ANY' } };
+      standardReq.toolConfig.functionCallingConfig = { mode: 'ANY' };
     } else if (typeof req.tool_choice === 'object' && (req.tool_choice as any).type === 'function') {
-      standardReq.toolConfig = {
-        functionCallingConfig: {
-          mode: 'ANY',
-          allowedFunctionNames: [(req.tool_choice as any).function.name],
-        },
+      standardReq.toolConfig.functionCallingConfig = {
+        mode: 'ANY',
+        allowedFunctionNames: [(req.tool_choice as any).function.name],
       };
     }
+  }
+
+  if (addedGoogleSearch) {
+    standardReq.toolConfig = standardReq.toolConfig || {};
+    standardReq.toolConfig.includeServerSideToolInvocations = true;
   }
 
   return standardReq;

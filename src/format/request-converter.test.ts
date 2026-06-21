@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { convertAnthropicToGoogle } from './request-converter.js';
+import { config } from '../config.js';
 
 describe('convertAnthropicToGoogle', () => {
     it('converts basic message', () => {
@@ -53,7 +54,7 @@ describe('convertAnthropicToGoogle', () => {
     });
 
     describe('Google Search Grounding', () => {
-        it('injects googleSearch tool for Gemini models when requested', () => {
+        it('injects googleSearch tool and includeServerSideToolInvocations for Gemini models when requested', () => {
             const req = {
                 model: 'gemini-2.5-pro',
                 messages: [{ role: 'user', content: 'hello' }],
@@ -62,6 +63,7 @@ describe('convertAnthropicToGoogle', () => {
             const result = convertAnthropicToGoogle(req);
             expect(result.tools).toBeDefined();
             expect(result.tools).toContainEqual({ googleSearch: {} });
+            expect(result.toolConfig?.includeServerSideToolInvocations).toBe(true);
         });
 
         it('does not inject googleSearch tool for Claude models', () => {
@@ -94,6 +96,24 @@ describe('convertAnthropicToGoogle', () => {
             expect(result.tools).toHaveLength(2);
             expect(result.tools?.[0]).toHaveProperty('functionDeclarations');
             expect(result.tools?.[1]).toEqual({ googleSearch: {} });
+            expect(result.toolConfig?.includeServerSideToolInvocations).toBe(true);
+        });
+
+        it('injects googleSearch when config.forceGoogleSearch is true', () => {
+            const originalForce = config.forceGoogleSearch;
+            config.forceGoogleSearch = true;
+            try {
+                const req = {
+                    model: 'gemini-2.5-pro',
+                    messages: [{ role: 'user', content: 'hello' }]
+                };
+                const result = convertAnthropicToGoogle(req);
+                expect(result.tools).toBeDefined();
+                expect(result.tools).toContainEqual({ googleSearch: {} });
+                expect(result.toolConfig?.includeServerSideToolInvocations).toBe(true);
+            } finally {
+                config.forceGoogleSearch = originalForce;
+            }
         });
     });
 });

@@ -36,7 +36,10 @@ export interface StandardRequest {
     };
   };
   tools?: Array<{ functionDeclarations?: FunctionDeclaration[]; googleSearch?: Record<string, unknown> }>;
-  toolConfig?: { functionCallingConfig: { mode: string; allowedFunctionNames?: string[] } };
+  toolConfig?: { 
+    functionCallingConfig?: { mode: string; allowedFunctionNames?: string[] };
+    includeServerSideToolInvocations?: boolean;
+  };
 }
 
 export interface StandardResponse {

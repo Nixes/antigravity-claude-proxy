@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { parseOpenAIRequest, formatOpenAIResponse, formatOpenAIStreamChunk, OpenAIStreamState } from './openai.js';
 import * as signatureCache from '../format/signature-cache.js';
+import { config } from '../config.js';
 
 describe('parseOpenAIRequest', () => {
   describe('message mapping', () => {
@@ -230,15 +231,29 @@ describe('parseOpenAIRequest', () => {
   });
 
   describe('Google Search Grounding', () => {
-    it('injects googleSearch tool if google_search is true', () => {
+    it('injects googleSearch tool and includeServerSideToolInvocations if google_search is true', () => {
       const res = parseOpenAIRequest({ model: 'gemini-2.5-pro', messages: [], google_search: true });
       expect(res.tools).toBeDefined();
       expect(res.tools).toContainEqual({ googleSearch: {} });
+      expect(res.toolConfig?.includeServerSideToolInvocations).toBe(true);
     });
 
     it('does not inject googleSearch if google_search is omitted', () => {
       const res = parseOpenAIRequest({ model: 'gemini-2.5-pro', messages: [] });
       expect(res.tools).toBeUndefined();
+    });
+
+    it('injects googleSearch when config.forceGoogleSearch is true', () => {
+      const originalForce = config.forceGoogleSearch;
+      config.forceGoogleSearch = true;
+      try {
+        const res = parseOpenAIRequest({ model: 'gemini-2.5-pro', messages: [] });
+        expect(res.tools).toBeDefined();
+        expect(res.tools).toContainEqual({ googleSearch: {} });
+        expect(res.toolConfig?.includeServerSideToolInvocations).toBe(true);
+      } finally {
+        config.forceGoogleSearch = originalForce;
+      }
     });
   });
 });

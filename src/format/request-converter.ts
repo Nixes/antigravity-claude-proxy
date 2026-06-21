@@ -257,6 +257,11 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
     if ((anthropicRequest.google_search === true || config.forceGoogleSearch) && isGeminiModel) {
         googleRequest.tools = googleRequest.tools || [];
         googleRequest.tools.push({ googleSearch: {} });
+        
+        // Required by Gemini API when combining built-in tools (googleSearch) with custom function calling
+        googleRequest.toolConfig = googleRequest.toolConfig || {};
+        googleRequest.toolConfig.includeServerSideToolInvocations = true;
+        
         logger.debug('[RequestConverter] Injected googleSearch tool for Gemini model');
     }
 
