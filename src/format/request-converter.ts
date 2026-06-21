@@ -25,6 +25,7 @@ import {
 import { logger } from '../utils/logger.js';
 
 import { StandardRequest, GContent, GPart } from '../api/types.js';
+import { config } from '../config.js';
 
 /**
  * Convert Anthropic Messages API request to the format expected by Cloud Code
@@ -253,7 +254,7 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
     }
 
     // Inject Google Search tool if requested (only supported on Gemini)
-    if (anthropicRequest.google_search === true && isGeminiModel) {
+    if ((anthropicRequest.google_search === true || config.forceGoogleSearch) && isGeminiModel) {
         googleRequest.tools = googleRequest.tools || [];
         googleRequest.tools.push({ googleSearch: {} });
         logger.debug('[RequestConverter] Injected googleSearch tool for Gemini model');
