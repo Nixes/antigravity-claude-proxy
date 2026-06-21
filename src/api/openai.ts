@@ -1,6 +1,8 @@
 import { StandardRequest, StandardResponse, StandardStreamChunk, GContent, GPart, OpenAIRequest, OpenAIResponse } from './types.js';
 import { cacheSignature, getCachedSignature } from '../format/signature-cache.js';
 import { formatGroundingFootnotes } from '../format/grounding-formatter.js';
+import { getModelFamily } from '../constants.js';
+import { config } from '../config.js';
 export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
   if (!req.messages || !Array.isArray(req.messages)) {
     throw new Error('invalid_request_error: messages is required and must be an array');
@@ -126,7 +128,8 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
     }
   }
 
-  if (req.google_search === true) {
+  const isGeminiModel = getModelFamily(req.model) === 'gemini';
+  if ((req.google_search === true || config.forceGoogleSearch) && isGeminiModel) {
     standardReq.tools = standardReq.tools || [];
     standardReq.tools.push({ googleSearch: {} });
   }
