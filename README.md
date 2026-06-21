@@ -6,8 +6,6 @@
 
 A proxy server that exposes an **Anthropic and OpenAI-compatible API** backed by **Antigravity's Cloud Code**, letting you use Claude and Gemini models with **Claude Code CLI**, **OpenClaw / ClawdBot**, or any AI client.
 
-![Antigravity Claude Proxy Banner](images/banner.png)
-
 > **⚠️ WARNING:** Google has been issuing ToS violation bans on accounts connected to this proxy. Use at your own risk.
 
 <details>
