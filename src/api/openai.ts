@@ -154,7 +154,7 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
 
   if (addedGoogleSearch) {
     standardReq.toolConfig = standardReq.toolConfig || {};
-    standardReq.toolConfig.includeServerSideToolInvocations = true;
+    standardReq.toolConfig.include_server_side_tool_invocations = true;
   }
 
   return standardReq;

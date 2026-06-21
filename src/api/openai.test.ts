@@ -235,7 +235,7 @@ describe('parseOpenAIRequest', () => {
       const res = parseOpenAIRequest({ model: 'gemini-2.5-pro', messages: [], google_search: true });
       expect(res.tools).toBeDefined();
       expect(res.tools).toContainEqual({ googleSearch: {} });
-      expect(res.toolConfig?.includeServerSideToolInvocations).toBe(true);
+      expect(res.toolConfig?.include_server_side_tool_invocations).toBe(true);
     });
 
     it('does not inject googleSearch if google_search is omitted', () => {
@@ -250,7 +250,7 @@ describe('parseOpenAIRequest', () => {
         const res = parseOpenAIRequest({ model: 'gemini-2.5-pro', messages: [] });
         expect(res.tools).toBeDefined();
         expect(res.tools).toContainEqual({ googleSearch: {} });
-        expect(res.toolConfig?.includeServerSideToolInvocations).toBe(true);
+        expect(res.toolConfig?.include_server_side_tool_invocations).toBe(true);
       } finally {
         config.forceGoogleSearch = originalForce;
       }

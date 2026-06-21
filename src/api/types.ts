@@ -39,6 +39,7 @@ export interface StandardRequest {
   toolConfig?: { 
     functionCallingConfig?: { mode: string; allowedFunctionNames?: string[] };
     includeServerSideToolInvocations?: boolean;
+    include_server_side_tool_invocations?: boolean;
   };
 }
 

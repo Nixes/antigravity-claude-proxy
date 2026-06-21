@@ -63,7 +63,7 @@ describe('convertAnthropicToGoogle', () => {
             const result = convertAnthropicToGoogle(req);
             expect(result.tools).toBeDefined();
             expect(result.tools).toContainEqual({ googleSearch: {} });
-            expect(result.toolConfig?.includeServerSideToolInvocations).toBe(true);
+            expect(result.toolConfig?.include_server_side_tool_invocations).toBe(true);
         });
 
         it('does not inject googleSearch tool for Claude models', () => {
@@ -96,7 +96,7 @@ describe('convertAnthropicToGoogle', () => {
             expect(result.tools).toHaveLength(2);
             expect(result.tools?.[0]).toHaveProperty('functionDeclarations');
             expect(result.tools?.[1]).toEqual({ googleSearch: {} });
-            expect(result.toolConfig?.includeServerSideToolInvocations).toBe(true);
+            expect(result.toolConfig?.include_server_side_tool_invocations).toBe(true);
         });
 
         it('injects googleSearch when config.forceGoogleSearch is true', () => {
@@ -110,7 +110,7 @@ describe('convertAnthropicToGoogle', () => {
                 const result = convertAnthropicToGoogle(req);
                 expect(result.tools).toBeDefined();
                 expect(result.tools).toContainEqual({ googleSearch: {} });
-                expect(result.toolConfig?.includeServerSideToolInvocations).toBe(true);
+                expect(result.toolConfig?.include_server_side_tool_invocations).toBe(true);
             } finally {
                 config.forceGoogleSearch = originalForce;
             }

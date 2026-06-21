@@ -260,7 +260,7 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
         
         // Required by Gemini API when combining built-in tools (googleSearch) with custom function calling
         googleRequest.toolConfig = googleRequest.toolConfig || {};
-        googleRequest.toolConfig.includeServerSideToolInvocations = true;
+        googleRequest.toolConfig.include_server_side_tool_invocations = true;
         
         logger.debug('[RequestConverter] Injected googleSearch tool for Gemini model');
     }
