@@ -21,6 +21,7 @@ The proxy supports the following environment variables:
 | `ANTIGRAVITY_CLIENT_VERSION` | Override the X-Client-Version header sent to the API (prevents "no longer supported" errors) | Auto-detected from product.json |
 | `ANTIGRAVITY_CLIENT_VERSION_FALLBACK` | Override the fallback X-Client-Version (used when product.json is not found) | `1.110.0` |
 | `CLAUDE_CONFIG_PATH` | Path to `.claude` directory for CLI settings (for systemd/service deployments) | `~/.claude` |
+| `ANTIGRAVITY_SCRUB_IDENTITY` | Extra `Term=>Replacement` pairs (comma-separated, e.g. `Nous Research=>the team,Hermes=>the assistant`) applied to the client's system prompt, in addition to the built-in Hermes/Nous Research rules. Cloud Code returns an opaque 429 "quota exhausted" error when the system prompt names a known third-party AI product | - |
 
 ### Setting Environment Variables
 

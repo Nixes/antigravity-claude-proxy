@@ -344,6 +344,7 @@ The proxy server can be configured using the following environment variables.
 | `ANTIGRAVITY_CLIENT_VERSION` | Force a specific Antigravity client version string for requests. | (Auto) |
 | `ANTIGRAVITY_CLIENT_VERSION_FALLBACK` | Override Antigravity client fallback version if auto-detection fails. | `1.110.0` |
 | `FALLBACK_ANTIGRAVITY_VERSION` | Override Antigravity fallback version if auto-detection fails. | `2.0.3` |
+| `ANTIGRAVITY_SCRUB_IDENTITY` | Extra comma-separated `Term=>Replacement` pairs applied to the client's system prompt, in addition to the built-in Hermes/Nous Research rules. Prevents opaque 429 errors caused by third-party AI product names. | (None) |
 
 ---
 
