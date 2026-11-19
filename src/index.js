@@ -10,7 +10,7 @@ import app, { accountManager } from './server.js';
 import { DEFAULT_PORT } from './constants.js';
 import { logger } from './utils/logger.js';
 import { config } from './config.js';
-import { getStrategyLabel, STRATEGY_NAMES, DEFAULT_STRATEGY } from './account-manager/strategies/index.js';
+import { STRATEGY_NAMES } from './account-manager/strategies/index.js';
 import { getPackageVersion } from './utils/helpers.js';
 import path from 'path';
 import os from 'os';
