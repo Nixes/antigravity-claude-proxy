@@ -4,8 +4,20 @@ import request from 'supertest';
 import anthropicRouter from './anthropic.controller.js';
 import * as cloudcode from '../cloudcode/index.js';
 import { accountManager } from '../server-state.js';
+import { forceRefresh } from '../auth/token-extractor.js';
+import usageStats from '../modules/usage-stats.js';
 
 // Mock dependencies
+vi.mock('../modules/usage-stats.js', () => ({
+    default: {
+        track: vi.fn()
+    }
+}));
+
+vi.mock('../auth/token-extractor.js', () => ({
+    forceRefresh: vi.fn().mockResolvedValue('new-token')
+}));
+
 vi.mock('../cloudcode/index.js', () => ({
     sendMessage: vi.fn().mockResolvedValue({ candidates: [] }),
     sendMessageStream: vi.fn(),
@@ -17,7 +29,9 @@ vi.mock('../server-state.js', () => ({
         selectAccount: vi.fn().mockReturnValue({ account: { email: 'test@example.com' } }),
         getTokenForAccount: vi.fn().mockResolvedValue('fake-token'),
         isAllRateLimited: vi.fn().mockReturnValue(false),
-        resetAllRateLimits: vi.fn()
+        resetAllRateLimits: vi.fn(),
+        clearProjectCache: vi.fn(),
+        clearTokenCache: vi.fn()
     },
     ensureInitialized: vi.fn().mockResolvedValue(undefined),
     FALLBACK_ENABLED: false
@@ -89,5 +103,69 @@ describe('Anthropic Controller - Grounding Support', () => {
 
         const passedRequest = vi.mocked(cloudcode.sendMessage).mock.calls[0][0];
         expect(passedRequest.google_search).toBeUndefined();
+    });
+});
+
+describe('Anthropic Controller - Model Mapping & Usage Stats (#402)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.mocked(cloudcode.isValidModel).mockResolvedValue(true);
+        vi.mocked(cloudcode.sendMessage).mockResolvedValue({ model: 'claude-opus-4-6-thinking', candidates: [] });
+    });
+
+    it('resolves built-in model mappings and tracks resolved model on successful non-streaming dispatch', async () => {
+        const res = await request(app)
+            .post('/messages')
+            .send({
+                model: 'claude-opus-5-5',
+                messages: [{ role: 'user', content: 'hi' }]
+            });
+
+        expect(res.status).toBe(200);
+        const passedRequest = vi.mocked(cloudcode.sendMessage).mock.calls[0][0];
+        expect(passedRequest.model).toBe('claude-opus-4-6-thinking');
+        expect(usageStats.track).toHaveBeenCalledTimes(1);
+        expect(usageStats.track).toHaveBeenCalledWith('claude-opus-4-6-thinking');
+    });
+
+    it('tracks resolved model on streaming dispatch and does not track on invalid requests', async () => {
+        const badRes = await request(app)
+            .post('/messages')
+            .send({ model: 'claude-opus-5-5' });
+        expect(badRes.status).toBe(400);
+        expect(usageStats.track).not.toHaveBeenCalled();
+
+        const mockGenerator = async function* () {
+            yield { type: 'message_start' };
+            yield { type: 'message_stop' };
+        };
+        vi.mocked(cloudcode.sendMessageStream).mockReturnValue(mockGenerator() as ReturnType<typeof cloudcode.sendMessageStream>);
+
+        const streamRes = await request(app)
+            .post('/messages')
+            .send({
+                model: 'claude-sonnet-5-5',
+                messages: [{ role: 'user', content: 'hi' }],
+                stream: true
+            });
+        expect(streamRes.status).toBe(200);
+        expect(usageStats.track).toHaveBeenCalledWith('claude-sonnet-4-6');
+    });
+
+    it('invokes forceRefresh on authentication_error without ReferenceError and handles empty request body as 400', async () => {
+        const emptyBodyRes = await request(app).post('/messages');
+        expect(emptyBodyRes.status).toBe(400);
+        expect(emptyBodyRes.body.error?.type).toBe('invalid_request_error');
+
+        vi.mocked(cloudcode.sendMessage).mockRejectedValueOnce(new Error('401 authentication_error: token expired'));
+        const authRes = await request(app)
+            .post('/messages')
+            .send({ model: 'gemini-2.5-pro', messages: [{ role: 'user', content: 'hi' }] });
+
+        expect(authRes.status).toBe(401);
+        expect(accountManager.clearProjectCache).toHaveBeenCalledTimes(1);
+        expect(accountManager.clearTokenCache).toHaveBeenCalledTimes(1);
+        expect(forceRefresh).toHaveBeenCalledTimes(1);
+        expect(authRes.body.error?.message).toBe('Token was expired and has been refreshed. Please retry your request.');
     });
 });

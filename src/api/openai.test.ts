@@ -185,7 +185,7 @@ describe('parseOpenAIRequest', () => {
   });
 
   describe('tool mapping', () => {
-    it('maps a tools array to functionDeclarations with name, description, parameters', () => {
+    it('maps a tools array to functionDeclarations with sanitized protobuf parameters', () => {
       const req = {
         model: 'test',
         messages: [],
@@ -193,7 +193,45 @@ describe('parseOpenAIRequest', () => {
       };
       const res = parseOpenAIRequest(req);
       expect(res.tools).toHaveLength(1);
-      expect(res.tools![0].functionDeclarations[0]).toEqual({ name: 'f1', description: 'desc', parameters: { type: 'object' } });
+      expect(res.tools![0].functionDeclarations[0]).toEqual({
+        name: 'f1',
+        description: 'desc',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            reason: { type: 'STRING', description: 'Reason for calling this tool' }
+          },
+          required: ['reason']
+        }
+      });
+    });
+
+    it('sanitizes nested arrays and stringifies non-string enum/const in OpenAI tool schemas', () => {
+      const req = {
+        model: 'gemini-3.8-flash-tiered',
+        messages: [],
+        max_tokens: 100000,
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'query_items',
+            parameters: {
+              type: 'object',
+              properties: {
+                where: { type: 'array', items: { type: 'array' } },
+                flag: { const: true },
+                count: { type: 'integer', enum: [1, 2] }
+              }
+            }
+          }
+        }]
+      };
+      const res = parseOpenAIRequest(req);
+      expect(res.generationConfig.maxOutputTokens).toBe(65536);
+      const props = res.tools![0].functionDeclarations[0].parameters?.properties as Record<string, Record<string, unknown>>;
+      expect(props.where).toEqual({ type: 'ARRAY', items: { type: 'ARRAY', items: { type: 'STRING' } } });
+      expect(props.flag.enum).toEqual(['true']);
+      expect(props.count.enum).toEqual(['1', '2']);
     });
 
     it('maps tool_choice "auto" to functionCallingConfig mode AUTO', () => {
@@ -317,6 +355,22 @@ describe('formatOpenAIResponse', () => {
     expect(res.usage.prompt_tokens).toBe(10);
     expect(res.usage.completion_tokens).toBe(5);
     expect(res.usage.total_tokens).toBe(15);
+  });
+
+  it('includes thoughtsTokenCount in completion_tokens and avoids NaN on partial usageMetadata (#406)', () => {
+    const withThoughts = formatOpenAIResponse({
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+      usageMetadata: { promptTokenCount: 100, cachedContentTokenCount: 40, candidatesTokenCount: 15, thoughtsTokenCount: 25 }
+    }, 'test-model');
+    expect(withThoughts.usage.prompt_tokens).toBe(60);
+    expect(withThoughts.usage.completion_tokens).toBe(40);
+    expect(withThoughts.usage.total_tokens).toBe(100);
+
+    const emptyUsage = formatOpenAIResponse({
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+      usageMetadata: {} as { promptTokenCount: number; candidatesTokenCount: number }
+    }, 'test-model');
+    expect(emptyUsage.usage).toEqual({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
   });
 
   it('returns a safe empty response for an empty candidates array', () => {
@@ -639,6 +693,65 @@ describe('OpenAI spec compliance regressions', () => {
 
       expect(Object.prototype.hasOwnProperty.call(parsed.choices[0], 'finish_reason')).toBe(true);
       expect(parsed.choices[0].finish_reason).toBeNull();
+    });
+
+    it('emits finish_reason "tool_calls" when functionCall is streamed before finishReason STOP', () => {
+      const state = makeState(true);
+      const toolChunk = formatOpenAIStreamChunk(
+        { candidates: [{ content: { parts: [{ functionCall: { name: 'get_weather', args: undefined as unknown as Record<string, unknown> } }] } }] },
+        state
+      ) as string;
+      const parsedTool = JSON.parse(toolChunk.trim().replace(/^data: /, ''));
+      expect(parsedTool.choices[0].delta.tool_calls[0].function.arguments).toBe('{}');
+
+      const endChunk = formatOpenAIStreamChunk(
+        { candidates: [{ finishReason: 'STOP' }] },
+        state
+      ) as string;
+      const parsedEnd = JSON.parse(endChunk.trim().replace(/^data: /, ''));
+      expect(parsedEnd.choices[0].finish_reason).toBe('tool_calls');
+    });
+
+    it('defaults omitted functionCall.args and thought part.text in formatOpenAIResponse', () => {
+      const res = formatOpenAIResponse(
+        {
+          candidates: [{
+            content: {
+              parts: [
+                { thought: true },
+                { functionCall: { name: 'ping', args: undefined as unknown as Record<string, unknown> } }
+              ]
+            },
+            finishReason: 'STOP'
+          }],
+          usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 2 }
+        },
+        'test-model'
+      );
+      expect(res.choices[0].message.content).toBe('<think>\n\n</think>\n\n');
+      expect(res.choices[0].message.tool_calls?.[0].function.arguments).toBe('{}');
+      expect(res.choices[0].finish_reason).toBe('tool_calls');
+    });
+
+    it('throws invalid_request_error on malformed tool_calls JSON or invalid function tool_choice', () => {
+      expect(() =>
+        parseOpenAIRequest({
+          model: 'test-model',
+          messages: [{
+            role: 'assistant',
+            content: null,
+            tool_calls: [{ id: 'c1', type: 'function', function: { name: 'f1', arguments: '{not-json' } }]
+          }]
+        })
+      ).toThrow('invalid_request_error');
+
+      expect(() =>
+        parseOpenAIRequest({
+          model: 'test-model',
+          messages: [],
+          tool_choice: { type: 'function', function: {} }
+        })
+      ).toThrow('invalid_request_error');
     });
   });
 });

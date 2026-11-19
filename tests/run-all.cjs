@@ -7,9 +7,23 @@
  */
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+const SIGNATURE_STORE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sigstore-tests-'));
+const SIGNATURE_STORE_FOR_TESTS = path.join(SIGNATURE_STORE_DIR, 'store.json');
+process.once('exit', () => {
+    try {
+        fs.rmSync(SIGNATURE_STORE_DIR, { recursive: true, force: true });
+    } catch {
+        // Best-effort cleanup of test temp dir
+    }
+});
 
 const tests = [
     { name: 'Account Selection Strategies', file: 'test-strategies.cjs' },
+    { name: 'Session Manager', file: 'test-session-manager.cjs' },
+    { name: 'Signature Cache', file: 'test-signature-cache.cjs' },
     { name: 'Cache Control Stripping', file: 'test-cache-control.cjs' },
     { name: 'Thinking Signatures', file: 'test-thinking-signatures.cjs' },
     { name: 'Multi-turn Tools (Non-Streaming)', file: 'test-multiturn-thinking-tools.cjs' },
@@ -24,14 +38,17 @@ const tests = [
     { name: 'Streaming Whitespace', file: 'test-streaming-whitespace.cjs' },
     { name: '403 Account Rotation (Unit)', file: 'test-403-account-rotation.cjs' },
     { name: '403 Account Rotation (Integration)', file: 'test-403-integration.cjs' },
-    { name: 'Version Detection', file: 'test-version-detection.js' }
+    { name: 'Version Detection', file: 'test-version-detection.js' },
+    { name: 'Usage Stats & Model Mapping', file: 'test-usage-stats.js' }
 ];
 
 async function runTest(test) {
     return new Promise((resolve) => {
         const testPath = path.join(__dirname, test.file);
         const child = spawn('node', [testPath], {
-            stdio: 'inherit'
+            stdio: 'inherit',
+            // Unit tests must never write into the real persisted signature store.
+            env: { ...process.env, ANTIGRAVITY_SIGNATURE_STORE: SIGNATURE_STORE_FOR_TESTS }
         });
 
         child.on('close', (code) => {

@@ -39,7 +39,8 @@
     "test:emptyretry": "node tests/test-empty-response-retry.cjs",
     "test:sanitizer": "node tests/test-schema-sanitizer.cjs",
     "test:strategies": "node tests/test-strategies.cjs",
-    "test:cache-control": "node tests/test-cache-control.cjs"
+    "test:cache-control": "node tests/test-cache-control.cjs",
+    "test:usage-stats": "node tests/test-usage-stats.js"
   },
   "keywords": [
     "claude",
@@ -59,15 +60,15 @@
     "url": "https://github.com/badri-s2001/antigravity-claude-proxy/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.19.0"
   },
   "dependencies": {
     "async-mutex": "^0.5.0",
-    "better-sqlite3": "^12.5.0",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
-    "express": "^4.18.2",
+    "express": "^5.3.0",
     "tsx": "^4.22.4",
-    "undici": "^7.20.0"
+    "undici": "^8.12.4"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",

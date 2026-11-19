@@ -50,7 +50,7 @@ function isServerRunning() {
             resolve(false);
         });
 
-        socket.on('error', (err) => {
+        socket.on('error', () => {
             socket.destroy();
             resolve(false); // Port free
         });
@@ -447,6 +447,7 @@ async function verifyAccounts() {
             console.log(`  ✓ ${email} - OK`);
         } catch (error) {
             console.log(`  ✗ ${account.email} - ${error.message}`);
+            process.exitCode = 1;
         }
     }
 }
@@ -500,10 +501,13 @@ async function main() {
                 console.log(`Unknown command: ${command}`);
                 console.log('Run with "help" for usage information.');
         }
+    } catch (error) {
+        console.error(error);
+        process.exitCode = 1;
     } finally {
         rl.close();
-        // Force exit to prevent hanging
-        process.exit(0);
+        // Force exit to prevent hanging while preserving failure exit codes
+        process.exit(process.exitCode ?? 0);
     }
 }
 

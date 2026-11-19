@@ -163,7 +163,7 @@ function mergeAllOf(schema) {
 
         // Merge properties (allOf properties override parent for same keys)
         if (Object.keys(mergedProperties).length > 0) {
-            result.properties = { ...mergedProperties, ...(result.properties || {}) };
+            result.properties = { ...mergedProperties, ...result.properties };
         }
 
         // Merge required
@@ -288,10 +288,6 @@ function flattenAnyOfOneOf(schema) {
 
     return result;
 }
-
-// ============================================================================
-// Enhanced Schema Hints (for preserving semantic information)
-// ============================================================================
 
 /**
  * Add hints for enum values (if ≤10 values).
@@ -518,12 +514,27 @@ export function sanitizeSchema(schema) {
     for (const [key, value] of Object.entries(schema)) {
         // Convert "const" to "enum" for compatibility
         if (key === 'const') {
-            sanitized.enum = [value];
+            // Google's API rejects non-string enum values (TYPE_STRING).
+            // Convert booleans/numbers to strings, or skip if the value is
+            // not a simple scalar.
+            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                sanitized.enum = [String(value)];
+            } else {
+                // For complex const values, add as description hint instead
+                // local fix: `sanitized` is a const; merge the hint instead of reassigning
+                Object.assign(sanitized, appendDescriptionHint(sanitized, `Must be: ${JSON.stringify(value)}`));
+            }
             continue;
         }
 
         // Skip fields not in allowlist
         if (!ALLOWED_FIELDS.has(key)) {
+            continue;
+        }
+
+        // Sanitize enum values: Google requires TYPE_STRING for enum entries
+        if (key === 'enum' && Array.isArray(value)) {
+            sanitized.enum = value.map(v => (typeof v === 'string') ? v : String(v));
             continue;
         }
 
@@ -596,7 +607,6 @@ export function cleanSchema(schema) {
     if (!schema || typeof schema !== 'object') return schema;
     if (Array.isArray(schema)) return schema.map(cleanSchema);
 
-    // Phase 1: Convert $refs to hints
     let result = convertRefsToHints(schema);
 
     // Phase 1b: Add enum hints (preserves enum info in description)
@@ -617,7 +627,6 @@ export function cleanSchema(schema) {
     // Phase 2c: Flatten type arrays and update required for nullable
     result = flattenTypeArrays(result);
 
-    // Phase 3: Remove unsupported keywords
     const unsupported = [
         'additionalProperties', 'default', '$schema', '$defs',
         'definitions', '$ref', '$id', '$comment', 'title',
@@ -637,7 +646,6 @@ export function cleanSchema(schema) {
         }
     }
 
-    // Phase 4: Final cleanup - recursively clean nested schemas and validate required
     if (result.properties && typeof result.properties === 'object') {
         const newProps = {};
         for (const [key, value] of Object.entries(result.properties)) {
@@ -663,10 +671,36 @@ export function cleanSchema(schema) {
         }
     }
 
-    // Phase 5: Convert type to Google's uppercase format (STRING, OBJECT, ARRAY, etc.)
-    // Only convert at current level - nested types already converted by recursive cleanSchema calls
     if (result.type && typeof result.type === 'string') {
         result.type = toGoogleType(result.type);
+    }
+
+    // Cloud Code rejects ARRAY schemas without a single object `items` ("items: missing field"), issue #368.
+    if (result.type === 'ARRAY') {
+        if (!result.items || typeof result.items !== 'object') {
+            // Missing entirely, or a boolean schema like `items: true`.
+            result.items = { type: 'STRING' };
+        } else if (Array.isArray(result.items)) {
+            // Tuple-form `items: [...]` - Google only supports one items
+            // schema, so collapse to the most informative object entry.
+            let best = null;
+            let bestScore = -1;
+            for (const option of result.items) {
+                if (!option || typeof option !== 'object' || Array.isArray(option)) continue;
+                const score = scoreSchemaOption(option);
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = option;
+                }
+            }
+            result.items = best || { type: 'STRING' };
+        }
+    }
+
+    // Google rejects properties/required on non-OBJECT nodes, which anyOf/oneOf flattening can leave behind.
+    if (result.type !== 'OBJECT') {
+        delete result.properties;
+        delete result.required;
     }
 
     return result;

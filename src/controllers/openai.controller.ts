@@ -1,11 +1,14 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { accountManager, ensureInitialized, FALLBACK_ENABLED } from '../server-state.js';
 import { sendMessageStandard, sendMessageStreamStandard, isValidModel } from '../cloudcode/index.js';
-import { parseOpenAIRequest, formatOpenAIResponse, formatOpenAIStreamChunk } from '../api/openai.js';
+import { parseOpenAIRequest, formatOpenAIResponse, formatOpenAIStreamChunk, OpenAIStreamState } from '../api/openai.js';
+import { OpenAIRequest, StandardResponse, StandardStreamChunk } from '../api/types.js';
 import { parseError } from '../utils/error-parser.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { resolveModelId } from '../utils/model-resolver.js';
+import usageStats from '../modules/usage-stats.js';
 
 const openaiRouter = Router();
 
@@ -13,19 +16,18 @@ const openaiRouter = Router();
  * OpenAI-compatible Completions API
  * POST /v1/chat/completions
  */
-openaiRouter.post('/chat/completions', async (req: any, res: any) => {
+openaiRouter.post('/chat/completions', async (req: Request, res: Response) => {
+    const flushableRes = res as Response & { flush?: () => void };
     try {
         await ensureInitialized();
 
-        let requestedModel = req.body.model || 'gpt-4o';
-        const modelMapping = config.modelMapping || {};
-        if (modelMapping[requestedModel] && modelMapping[requestedModel].mapping) {
-            const targetModel = modelMapping[requestedModel].mapping;
-            logger.info(`[Server] Mapping model ${requestedModel} -> ${targetModel}`);
-            requestedModel = targetModel;
-        }
+        const body = (req.body ?? {}) as Partial<OpenAIRequest> & { model?: string; stream?: boolean };
+        const requestedModel = resolveModelId(
+            body.model || 'gpt-4o',
+            config.modelMapping
+        );
 
-        const standardRequest = parseOpenAIRequest({ ...req.body, model: requestedModel });
+        const standardRequest = parseOpenAIRequest({ ...body, model: requestedModel } as OpenAIRequest);
 
         const modelId = standardRequest.model;
 
@@ -46,13 +48,14 @@ openaiRouter.post('/chat/completions', async (req: any, res: any) => {
             accountManager.resetAllRateLimits();
         }
 
-        logger.info(`[API] OpenAI Request for model: ${modelId}, stream: ${!!req.body.stream}`);
+        logger.info(`[API] OpenAI Request for model: ${modelId}, stream: ${!!body.stream}`);
 
-        if (req.body.stream) {
+        if (body.stream) {
             try {
                 const generator = sendMessageStreamStandard(standardRequest, accountManager, FALLBACK_ENABLED);
                 
                 const firstResult = await generator.next();
+                usageStats.track(modelId);
 
                 res.status(200);
                 res.setHeader('Content-Type', 'text/event-stream');
@@ -61,34 +64,35 @@ openaiRouter.post('/chat/completions', async (req: any, res: any) => {
                 res.setHeader('X-Accel-Buffering', 'no');
                 res.flushHeaders();
 
-                let state = {
+                const state: OpenAIStreamState = {
                     model: requestedModel,
                     id: `chatcmpl-${crypto.randomUUID().replace(/-/g, '')}`,
                     created: Math.floor(Date.now() / 1000),
                     hasEmittedRole: false,
-                    toolCallIndex: 0
+                    toolCallIndex: 0,
+                    hasToolCalls: false
                 };
 
                 if (!firstResult.done) {
-                    const chunkStr = formatOpenAIStreamChunk(firstResult.value as any, state);
+                    const chunkStr = formatOpenAIStreamChunk(firstResult.value as StandardStreamChunk, state);
                     if (chunkStr) {
                         res.write(chunkStr);
-                        if (res.flush) res.flush();
+                        if (flushableRes.flush) flushableRes.flush();
                     }
                 }
 
                 for await (const event of generator) {
-                    const chunkStr = formatOpenAIStreamChunk(event as any, state);
+                    const chunkStr = formatOpenAIStreamChunk(event as StandardStreamChunk, state);
                     if (chunkStr) {
                         res.write(chunkStr);
-                        if (res.flush) res.flush();
+                        if (flushableRes.flush) flushableRes.flush();
                     }
                 }
                 
                 res.write('data: [DONE]\n\n');
                 res.end();
 
-            } catch (error: any) {
+            } catch (error: unknown) {
                 if (!res.headersSent) {
                     logger.error('[API] Initial stream error:', error);
                     const { errorType, statusCode, errorMessage } = parseError(error);
@@ -105,10 +109,11 @@ openaiRouter.post('/chat/completions', async (req: any, res: any) => {
             }
         } else {
             const googleResponse = await sendMessageStandard(standardRequest, accountManager, FALLBACK_ENABLED);
-            const openAiResponse = formatOpenAIResponse(googleResponse as any, requestedModel);
+            usageStats.track(modelId);
+            const openAiResponse = formatOpenAIResponse(googleResponse as StandardResponse, requestedModel);
             res.json(openAiResponse);
         }
-    } catch (error: any) {
+    } catch (error: unknown) {
         logger.error('[API] Request failed:', error);
         const { errorType, statusCode, errorMessage } = parseError(error);
         

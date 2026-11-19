@@ -51,7 +51,7 @@ document.addEventListener('alpine:init', () => {
                 if (saved.placeholderMode) {
                     this.setPlaceholderMode(true, saved.placeholderIncludeReal !== false);
                 }
-            } catch (e) { /* ignore parse errors */ }
+            } catch { /* ignore parse errors */ }
 
             // Watch filters to recompute
             // Alpine stores don't have $watch automatically unless inside a component?
@@ -187,7 +187,7 @@ document.addEventListener('alpine:init', () => {
                         if (data.config) {
                             this.devMode = !!data.config.devMode;
                         }
-                    } catch (e) { /* ignore parse errors */ }
+                    } catch { /* ignore parse errors */ }
                 } else {
                     this.connectionStatus = 'disconnected';
                 }
@@ -437,10 +437,10 @@ document.addEventListener('alpine:init', () => {
             const models = [
                 'claude-opus-4-6-thinking',
                 'claude-sonnet-4-6',
-                'gemini-3.1-pro-high',
-                'gemini-3.1-pro-low',
-                'gemini-3-flash',
-                'gemini-3.1-flash-lite'
+                'gemini-3.8-flash-tiered',
+                'gemini-3.6-flash-high',
+                'gemini-3.6-flash-low',
+                'gemini-3.5-flash-low'
             ];
 
             const tiers = ['ultra', 'pro', 'pro', 'free'];

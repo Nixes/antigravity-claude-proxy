@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { accountManager, ensureInitialized, FALLBACK_ENABLED } from '../server-state.js';
+import { forceRefresh } from '../auth/token-extractor.js';
 import { sendMessage, sendMessageStream, isValidModel } from '../cloudcode/index.js';
 import { parseError } from '../utils/error-parser.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { resolveModelId } from '../utils/model-resolver.js';
+import usageStats from '../modules/usage-stats.js';
 
 const anthropicRouter = Router();
 
@@ -39,18 +42,13 @@ anthropicRouter.post('/messages', async (req, res) => {
             top_k,
             temperature,
             google_search
-        } = req.body;
+        } = req.body ?? {};
 
-        // Resolve model mapping if configured
-        let requestedModel = model || 'claude-3-5-sonnet-20241022';
-        const modelMapping = config.modelMapping || {};
-        if (modelMapping[requestedModel] && modelMapping[requestedModel].mapping) {
-            const targetModel = modelMapping[requestedModel].mapping;
-            logger.info(`[Server] Mapping model ${requestedModel} -> ${targetModel}`);
-            requestedModel = targetModel;
-        }
-
-        const modelId = requestedModel;
+        // Resolve model mapping (user config > built-in aliases)
+        const modelId = resolveModelId(
+            model || 'claude-3-5-sonnet-20241022',
+            config.modelMapping
+        );
 
         // Validate model ID before processing
         const { account: validationAccount } = accountManager.selectAccount();
@@ -131,6 +129,7 @@ anthropicRouter.post('/messages', async (req, res) => {
                 const firstResult = await generator.next();
 
                 // If we get here, the stream started successfully.
+                usageStats.track(modelId);
                 res.status(200);
                 res.setHeader('Content-Type', 'text/event-stream');
                 res.setHeader('Cache-Control', 'no-cache');
@@ -182,6 +181,7 @@ anthropicRouter.post('/messages', async (req, res) => {
         } else {
             // Handle non-streaming response
             const response = await sendMessage(request, accountManager, FALLBACK_ENABLED);
+            usageStats.track((response as { model?: string } | undefined)?.model || modelId);
             res.json(response);
         }
 

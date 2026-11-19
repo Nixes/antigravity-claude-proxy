@@ -4,12 +4,8 @@
  */
 
 import { MIN_SIGNATURE_LENGTH } from '../constants.js';
-import { getCachedSignatureFamily } from './signature-cache.js';
+import { getCachedSignature, getCachedSignatureFamily } from './signature-cache.js';
 import { logger } from '../utils/logger.js';
-
-// ============================================================================
-// Gemini Thinking Budget Limits (Issue #289)
-// ============================================================================
 
 // Max thinking budget per Gemini model version
 // Gemini 2.5 Flash: max 24,576 (API error: "supported values are integers from 1 to 24576")
@@ -57,10 +53,6 @@ export function clampGeminiThinkingBudget(modelName, budget) {
     return requestedBudget;
 }
 
-// ============================================================================
-// Cache Control Cleaning (Issue #189)
-// ============================================================================
-
 /**
  * Remove cache_control fields from all content blocks in messages.
  * This is a critical fix for Issue #189 where Claude Code CLI sends cache_control
@@ -94,7 +86,7 @@ export function cleanCacheControl(messages) {
             if (block.cache_control === undefined) return block;
 
             // Create a shallow copy without cache_control
-            const { cache_control, ...cleanBlock } = block;
+            const { cache_control: _cacheControl, ...cleanBlock } = block;
             removedCount++;
 
             return cleanBlock;
@@ -143,7 +135,10 @@ export function hasGeminiHistory(messages) {
     return messages.some(msg =>
         Array.isArray(msg.content) &&
         msg.content.some(block =>
-            block.type === 'tool_use' && block.thoughtSignature !== undefined
+            block && block.type === 'tool_use' && (
+                block.thoughtSignature !== undefined ||
+                Boolean(block.id && getCachedSignature(block.id))
+            )
         )
     );
 }
@@ -431,22 +426,29 @@ export function reorderAssistantContent(content) {
     return reordered;
 }
 
-// ============================================================================
-// Thinking Recovery Functions
-// ============================================================================
-
 /**
  * Check if a message has any VALID (signed) thinking blocks.
  * Only counts thinking blocks that have valid signatures, not unsigned ones
  * that will be dropped later.
  *
  * @param {Object} message - Message to check
+ * @param {string|null} [targetFamily=null] - Target model family ('claude' or 'gemini')
  * @returns {boolean} True if message has valid signed thinking blocks
  */
-function messageHasValidThinking(message) {
+function messageHasValidThinking(message, targetFamily = null) {
     const content = message.content || message.parts || [];
     if (!Array.isArray(content)) return false;
     return content.some(block => {
+        if (!block) return false;
+        if (block.type === 'tool_use' || block.functionCall) {
+            // Signed tool_use/functionCall blocks only satisfy Gemini's thinking
+            // requirement; Claude always needs its own Anthropic thinking blocks.
+            if (targetFamily !== 'gemini') return false;
+            if (block.thoughtSignature && block.thoughtSignature.length >= MIN_SIGNATURE_LENGTH) return true;
+            const cachedSig = block.id ? getCachedSignature(block.id) : null;
+            if (cachedSig && cachedSig.length >= MIN_SIGNATURE_LENGTH) return true;
+            return false;
+        }
         if (!isThinkingPart(block)) return false;
         // Check for valid signature (Anthropic style)
         if (block.signature && block.signature.length >= MIN_SIGNATURE_LENGTH) return true;
@@ -504,9 +506,10 @@ function isPlainUserMessage(message) {
  * 2. Interrupted tool: assistant has tool_use followed by plain user message (interrupted)
  *
  * @param {Array<Object>} messages - Array of messages
+ * @param {string|null} [targetFamily=null] - Target model family ('claude' or 'gemini')
  * @returns {Object} State object with inToolLoop, interruptedTool, turnHasThinking, etc.
  */
-function analyzeConversationState(messages) {
+function analyzeConversationState(messages, targetFamily = null) {
     if (!Array.isArray(messages) || messages.length === 0) {
         return { inToolLoop: false, interruptedTool: false, turnHasThinking: false, toolResultCount: 0 };
     }
@@ -526,7 +529,7 @@ function analyzeConversationState(messages) {
 
     const lastAssistant = messages[lastAssistantIdx];
     const hasToolUse = messageHasToolUse(lastAssistant);
-    const hasThinking = messageHasValidThinking(lastAssistant);
+    const hasThinking = messageHasValidThinking(lastAssistant, targetFamily);
 
     // Count trailing tool results after the assistant message
     let toolResultCount = 0;
@@ -567,10 +570,11 @@ function analyzeConversationState(messages) {
  * during recovery (not here).
  *
  * @param {Array<Object>} messages - Array of messages
+ * @param {string|null} [targetFamily=null] - Target model family ('claude' or 'gemini')
  * @returns {boolean} True if thinking recovery is needed
  */
-export function needsThinkingRecovery(messages) {
-    const state = analyzeConversationState(messages);
+export function needsThinkingRecovery(messages, targetFamily = null) {
+    const state = analyzeConversationState(messages, targetFamily);
 
     // Recovery is only needed in tool loops or interrupted tools
     if (!state.inToolLoop && !state.interruptedTool) return false;
@@ -651,7 +655,15 @@ function stripInvalidThinkingBlocks(messages, targetFamily = null) {
  * @returns {Array<Object>} Modified messages with synthetic messages injected
  */
 export function closeToolLoopForThinking(messages, targetFamily = null) {
-    const state = analyzeConversationState(messages);
+    // Escape hatch (Gemini only): skip synthetic-message injection.
+    // Set ANTIGRAVITY_DISABLE_THINKING_RECOVERY=1 to activate.
+    if (
+        process.env.ANTIGRAVITY_DISABLE_THINKING_RECOVERY === '1' &&
+        targetFamily === 'gemini'
+    ) {
+        return messages;
+    }
+    const state = analyzeConversationState(messages, targetFamily);
 
     // Handle neither tool loop nor interrupted tool
     if (!state.inToolLoop && !state.interruptedTool) return messages;

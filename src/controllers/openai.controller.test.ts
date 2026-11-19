@@ -4,8 +4,15 @@ import request from 'supertest';
 import openaiRouter from './openai.controller.js';
 import * as cloudcode from '../cloudcode/index.js';
 import * as openaiApi from '../api/openai.js';
+import usageStats from '../modules/usage-stats.js';
 
 // Mock dependencies
+vi.mock('../modules/usage-stats.js', () => ({
+    default: {
+        track: vi.fn()
+    }
+}));
+
 vi.mock('../cloudcode/index.js', () => ({
     sendMessageStandard: vi.fn().mockResolvedValue({ candidates: [] }),
     sendMessageStreamStandard: vi.fn(),
@@ -96,5 +103,59 @@ describe('OpenAI Controller - Grounding Support', () => {
 
         const passedArgs = vi.mocked(openaiApi.parseOpenAIRequest).mock.calls[0][0];
         expect(passedArgs.google_search).toBeUndefined();
+    });
+});
+
+describe('OpenAI Controller - Model Mapping & Usage Stats (#402)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.mocked(cloudcode.isValidModel).mockResolvedValue(true);
+        vi.mocked(cloudcode.sendMessageStandard).mockResolvedValue({ candidates: [] } as Awaited<ReturnType<typeof cloudcode.sendMessageStandard>>);
+    });
+
+    it('resolves built-in model mappings and tracks resolved model on successful dispatch', async () => {
+        vi.mocked(openaiApi.parseOpenAIRequest).mockReturnValueOnce({
+            model: 'claude-opus-4-6-thinking',
+            contents: [],
+            generationConfig: {}
+        });
+
+        const res = await request(app)
+            .post('/chat/completions')
+            .send({
+                model: 'claude-opus-5-5',
+                messages: [{ role: 'user', content: 'hi' }]
+            });
+
+        expect(res.status).toBe(200);
+        expect(vi.mocked(openaiApi.parseOpenAIRequest).mock.calls[0][0].model).toBe('claude-opus-4-6-thinking');
+        expect(usageStats.track).toHaveBeenCalledTimes(1);
+        expect(usageStats.track).toHaveBeenCalledWith('claude-opus-4-6-thinking');
+    });
+
+    it('does not track usage when upstream throws an error', async () => {
+        vi.mocked(cloudcode.sendMessageStandard).mockRejectedValueOnce(new Error('upstream failure'));
+
+        const res = await request(app)
+            .post('/chat/completions')
+            .send({
+                model: 'gemini-2.5-pro',
+                messages: [{ role: 'user', content: 'hi' }]
+            });
+
+        expect(res.status).toBe(500);
+        expect(usageStats.track).not.toHaveBeenCalled();
+    });
+
+    it('handles empty request body safely without TypeError when mounted standalone', async () => {
+        vi.mocked(openaiApi.parseOpenAIRequest).mockImplementationOnce(() => {
+            throw new Error('invalid_request_error: messages is required and must be an array');
+        });
+
+        const res = await request(app).post('/chat/completions');
+
+        expect(res.status).toBe(400);
+        expect(res.body.error?.type).toBe('invalid_request_error');
+        expect(vi.mocked(openaiApi.parseOpenAIRequest).mock.calls[0][0]).toEqual({ model: 'gpt-4o' });
     });
 });

@@ -26,13 +26,13 @@ const getThemeColor = (name) => window.utils.getThemeColor(name);
 // Color palette for different families and models
 const FAMILY_COLORS = {
   get claude() {
-    return getThemeColor("--color-neon-purple");
+    return getThemeColor("--color-family-claude");
   },
   get gemini() {
-    return getThemeColor("--color-neon-green");
+    return getThemeColor("--color-family-gemini");
   },
   get other() {
-    return getThemeColor("--color-neon-cyan");
+    return getThemeColor("--color-family-other");
   },
 };
 
@@ -75,57 +75,31 @@ function isCanvasReady(canvas) {
   try {
     const ctx = canvas.getContext("2d");
     return !!ctx;
-  } catch (e) {
+  } catch {
     return false;
   }
 }
 
 /**
- * Create a Chart.js dataset with gradient fill
+ * Create a Chart.js dataset drawn as a plain instrument trace (no area fill)
  * @param {string} label - Dataset label
  * @param {Array} data - Data points
  * @param {string} color - Line color
- * @param {HTMLCanvasElement} canvas - Canvas element
  * @returns {object} Chart.js dataset configuration
  */
-window.DashboardCharts.createDataset = function (label, data, color, canvas) {
-  let gradient;
-
-  try {
-    // Safely create gradient with fallback
-    if (canvas && canvas.getContext) {
-      const ctx = canvas.getContext("2d");
-      if (ctx && ctx.createLinearGradient) {
-        gradient = ctx.createLinearGradient(0, 0, 0, 200);
-        gradient.addColorStop(0, window.DashboardCharts.hexToRgba(color, 0.12));
-        gradient.addColorStop(
-          0.6,
-          window.DashboardCharts.hexToRgba(color, 0.05)
-        );
-        gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-      }
-    }
-  } catch (e) {
-    if (window.UILogger) window.UILogger.debug("Gradient fallback:", e.message);
-    gradient = null;
-  }
-
-  // Fallback to solid color if gradient creation failed
-  const backgroundColor =
-    gradient || window.DashboardCharts.hexToRgba(color, 0.08);
-
+window.DashboardCharts.createDataset = function (label, data, color) {
   return {
     label,
     data,
     borderColor: color,
-    backgroundColor: backgroundColor,
-    borderWidth: 2.5,
-    tension: 0.35,
-    fill: true,
-    pointRadius: 2.5,
-    pointHoverRadius: 6,
+    backgroundColor: color,
+    borderWidth: 2,
+    tension: 0.25,
+    fill: false,
+    pointRadius: 2,
+    pointHoverRadius: 5,
     pointBackgroundColor: color,
-    pointBorderColor: "rgba(9, 9, 11, 0.8)",
+    pointBorderColor: getThemeColor("--color-space-900") || "#111214",
     pointBorderWidth: 1.5,
   };
 };
@@ -139,14 +113,14 @@ window.DashboardCharts.updateCharts = function (component) {
 
   // Safety checks
   if (!canvas) {
-    console.debug("quotaChart canvas not found");
+    window.UILogger?.debug("quotaChart canvas not found");
     return;
   }
 
   // FORCE DESTROY: Check for existing chart on the canvas element property
   // This handles cases where Component state is lost but DOM persists
   if (canvas._chartInstance) {
-    console.debug("Destroying existing quota chart from canvas property");
+    window.UILogger?.debug("Destroying existing quota chart from canvas property");
     try {
         canvas._chartInstance.destroy();
     } catch(e) { if (window.UILogger) window.UILogger.debug(e); }
@@ -157,7 +131,7 @@ window.DashboardCharts.updateCharts = function (component) {
   if (component.charts.quotaDistribution) {
      try {
          component.charts.quotaDistribution.destroy();
-     } catch(e) { }
+     } catch (e) { window.UILogger?.debug("quotaDistribution destroy failed", e); }
      component.charts.quotaDistribution = null;
   }
   
@@ -165,7 +139,7 @@ window.DashboardCharts.updateCharts = function (component) {
   if (typeof Chart !== "undefined" && Chart.getChart) {
       const regChart = Chart.getChart(canvas);
       if (regChart) {
-          try { regChart.destroy(); } catch(e) {}
+          try { regChart.destroy(); } catch (e) { window.UILogger?.debug("Registry chart destroy failed", e); }
       }
   }
 
@@ -214,9 +188,9 @@ window.DashboardCharts.updateCharts = function (component) {
     : 0;
 
   const familyColors = {
-    claude: getThemeColor("--color-neon-purple") || "#a855f7",
-    gemini: getThemeColor("--color-neon-green") || "#22c55e",
-    unknown: getThemeColor("--color-neon-cyan") || "#06b6d4",
+    claude: getThemeColor("--color-family-claude") || "#4cc9d6",
+    gemini: getThemeColor("--color-family-gemini") || "#d9c39a",
+    unknown: getThemeColor("--color-family-other") || "#9aa7b0",
   };
 
   const data = [];
@@ -332,7 +306,7 @@ window.DashboardCharts.updateTrendChart = function (component) {
   // FORCE DESTROY: Check for existing chart on the canvas element property
   if (canvas) {
       if (canvas._chartInstance) {
-        console.debug("Destroying existing trend chart from canvas property");
+        window.UILogger?.debug("Destroying existing trend chart from canvas property");
         try {
             canvas._chartInstance.stop();
             canvas._chartInstance.destroy();
@@ -344,7 +318,7 @@ window.DashboardCharts.updateTrendChart = function (component) {
       if (typeof Chart !== "undefined" && Chart.getChart) {
           const regChart = Chart.getChart(canvas);
           if (regChart) {
-              try { regChart.stop(); regChart.destroy(); } catch(e) {}
+              try { regChart.stop(); regChart.destroy(); } catch (e) { window.UILogger?.debug("Registry chart destroy failed", e); }
           }
       }
   }
@@ -354,7 +328,7 @@ window.DashboardCharts.updateTrendChart = function (component) {
     try {
       component.charts.usageTrend.stop();
       component.charts.usageTrend.destroy();
-    } catch (e) { }
+    } catch (e) { window.UILogger?.debug("usageTrend destroy failed", e); }
     component.charts.usageTrend = null;
   }
 
@@ -461,8 +435,18 @@ window.DashboardCharts.updateTrendChart = function (component) {
       });
     });
 
-    // Build datasets for families
+    // Build datasets for families (only include families with activity > 0)
+    const activeFamilies = new Set();
+    Object.entries(dataByFamily).forEach(([family, values]) => {
+      if (values.some((v) => v > 0)) {
+        activeFamilies.add(family);
+      }
+    });
+    component.activeFamilies = activeFamilies;
+
     component.selectedFamilies.forEach((family) => {
+      if (!activeFamilies.has(family)) return;
+
       const color = window.DashboardFilters.getFamilyColor(family);
       const familyKey =
         "family" + family.charAt(0).toUpperCase() + family.slice(1);
@@ -501,10 +485,22 @@ window.DashboardCharts.updateTrendChart = function (component) {
       });
     });
 
-    // Build datasets for models
+    // Track models with activity > 0 in this filtered time range
+    const activeModelKeys = new Set();
+    Object.entries(dataByModel).forEach(([key, values]) => {
+      if (values.some((v) => v > 0)) {
+        activeModelKeys.add(key);
+      }
+    });
+    component.activeModelKeys = activeModelKeys;
+
+    // Build datasets for models (only include models with activity > 0 in this time range)
     component.families.forEach((family) => {
       (component.selectedModels[family] || []).forEach((model, modelIndex) => {
         const key = `${family}:${model}`;
+        // Skip models with 0 calls in the selected period
+        if (!activeModelKeys.has(key)) return;
+
         const color = window.DashboardFilters.getModelColor(family, modelIndex);
         datasets.push(
           window.DashboardCharts.createDataset(
@@ -516,6 +512,13 @@ window.DashboardCharts.updateTrendChart = function (component) {
         );
       });
     });
+  }
+
+  if (datasets.length === 0) {
+    if (window.UILogger) window.UILogger.debug("No active datasets for trend chart (all zero in time range)");
+    component.hasFilteredTrendData = false;
+    _trendChartUpdateLock = false;
+    return;
   }
 
   try {
@@ -543,6 +546,9 @@ window.DashboardCharts.updateTrendChart = function (component) {
             borderWidth: 1,
             padding: 10,
             displayColors: true,
+            filter: function (tooltipItem) {
+              return (tooltipItem.parsed?.y || 0) > 0;
+            },
             callbacks: {
               label: function (context) {
                 return context.dataset.label + ": " + context.parsed.y;
@@ -556,7 +562,7 @@ window.DashboardCharts.updateTrendChart = function (component) {
             grid: { display: false },
             ticks: {
               color: getThemeColor("--color-text-muted"),
-              font: { size: 10 },
+              font: { size: 10, family: '"B612 Mono", ui-monospace, monospace' },
             },
           },
           y: {
@@ -570,7 +576,7 @@ window.DashboardCharts.updateTrendChart = function (component) {
             },
             ticks: {
               color: getThemeColor("--color-text-muted"),
-              font: { size: 10 },
+              font: { size: 10, family: '"B612 Mono", ui-monospace, monospace' },
             },
           },
         },
