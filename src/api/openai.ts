@@ -245,7 +245,8 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): Open
   if (tool_calls.length > 0) message.tool_calls = tool_calls;
 
   const usage = res.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
-  const input_tokens = usage.promptTokenCount - (usage.cachedContentTokenCount || 0);
+  const input_tokens = Math.max(0, (usage.promptTokenCount || 0) - (usage.cachedContentTokenCount || 0));
+  const completion_tokens = (usage.candidatesTokenCount || 0) + (usage.thoughtsTokenCount || 0);
 
   return {
     id: `chatcmpl-${crypto.randomUUID()}`,
@@ -261,8 +262,8 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): Open
     ],
     usage: {
       prompt_tokens: input_tokens,
-      completion_tokens: usage.candidatesTokenCount,
-      total_tokens: input_tokens + usage.candidatesTokenCount,
+      completion_tokens,
+      total_tokens: input_tokens + completion_tokens,
     },
   };
 }

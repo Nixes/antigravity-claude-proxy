@@ -57,7 +57,8 @@ export async function* streamSSEResponse(response, originalModel) {
                 const usage = innerResponse.usageMetadata;
                 if (usage) {
                     inputTokens = usage.promptTokenCount || inputTokens;
-                    outputTokens = usage.candidatesTokenCount || outputTokens;
+                    // Anthropic semantics: output_tokens covers ALL generated tokens, thinking included.
+                    outputTokens = ((usage.candidatesTokenCount || 0) + (usage.thoughtsTokenCount || 0)) || outputTokens;
                     cacheReadTokens = usage.cachedContentTokenCount || cacheReadTokens;
                 }
 
@@ -300,11 +301,12 @@ export async function* streamSSEResponse(response, originalModel) {
         yield { type: 'content_block_stop', index: blockIndex };
     }
 
-    // Emit message_delta and message_stop
+    // Emit message_delta and message_stop (final usageMetadata is authoritative)
     yield {
         type: 'message_delta',
         delta: { stop_reason: stopReason || 'end_turn', stop_sequence: null },
         usage: {
+            input_tokens: Math.max(0, inputTokens - cacheReadTokens),
             output_tokens: outputTokens,
             cache_read_input_tokens: cacheReadTokens,
             cache_creation_input_tokens: 0

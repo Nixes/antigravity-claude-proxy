@@ -76,4 +76,26 @@ describe('convertGoogleToAnthropic', () => {
             });
         });
     });
+
+    describe('Usage Metadata (#406)', () => {
+        it('includes thoughtsTokenCount in output_tokens and clamps input_tokens at 0', () => {
+            const googleResponse = {
+                candidates: [{
+                    content: { parts: [{ text: 'Answer' }] },
+                    finishReason: 'STOP'
+                }],
+                usageMetadata: {
+                    promptTokenCount: 136389,
+                    cachedContentTokenCount: 130467,
+                    candidatesTokenCount: 1411,
+                    thoughtsTokenCount: 989
+                }
+            };
+
+            const result = convertGoogleToAnthropic(googleResponse, 'gemini-3.8-flash-tiered');
+            expect(result.usage.input_tokens).toBe(136389 - 130467);
+            expect(result.usage.output_tokens).toBe(2400);
+            expect(result.usage.cache_read_input_tokens).toBe(130467);
+        });
+    });
 });

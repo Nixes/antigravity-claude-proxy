@@ -357,6 +357,22 @@ describe('formatOpenAIResponse', () => {
     expect(res.usage.total_tokens).toBe(15);
   });
 
+  it('includes thoughtsTokenCount in completion_tokens and avoids NaN on partial usageMetadata (#406)', () => {
+    const withThoughts = formatOpenAIResponse({
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+      usageMetadata: { promptTokenCount: 100, cachedContentTokenCount: 40, candidatesTokenCount: 15, thoughtsTokenCount: 25 }
+    }, 'test-model');
+    expect(withThoughts.usage.prompt_tokens).toBe(60);
+    expect(withThoughts.usage.completion_tokens).toBe(40);
+    expect(withThoughts.usage.total_tokens).toBe(100);
+
+    const emptyUsage = formatOpenAIResponse({
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+      usageMetadata: {} as { promptTokenCount: number; candidatesTokenCount: number }
+    }, 'test-model');
+    expect(emptyUsage.usage).toEqual({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+  });
+
   it('returns a safe empty response for an empty candidates array', () => {
     const res = formatOpenAIResponse({ candidates: [], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } }, 'test-model');
     expect(res.choices).toHaveLength(0);

@@ -55,6 +55,7 @@ export interface StandardResponse {
   usageMetadata: {
     promptTokenCount: number;
     candidatesTokenCount: number;
+    thoughtsTokenCount?: number;
     cachedContentTokenCount?: number;
   };
 }
