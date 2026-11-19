@@ -501,10 +501,13 @@ async function main() {
                 console.log(`Unknown command: ${command}`);
                 console.log('Run with "help" for usage information.');
         }
+    } catch (error) {
+        console.error(error);
+        process.exitCode = 1;
     } finally {
         rl.close();
-        // Force exit to prevent hanging
-        process.exit(0);
+        // Force exit to prevent hanging while preserving failure exit codes
+        process.exit(process.exitCode ?? 0);
     }
 }
 

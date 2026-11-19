@@ -4,6 +4,7 @@ import request from 'supertest';
 import anthropicRouter from './anthropic.controller.js';
 import * as cloudcode from '../cloudcode/index.js';
 import { accountManager } from '../server-state.js';
+import { forceRefresh } from '../auth/token-extractor.js';
 import usageStats from '../modules/usage-stats.js';
 
 // Mock dependencies
@@ -11,6 +12,10 @@ vi.mock('../modules/usage-stats.js', () => ({
     default: {
         track: vi.fn()
     }
+}));
+
+vi.mock('../auth/token-extractor.js', () => ({
+    forceRefresh: vi.fn().mockResolvedValue('new-token')
 }));
 
 vi.mock('../cloudcode/index.js', () => ({
@@ -24,7 +29,9 @@ vi.mock('../server-state.js', () => ({
         selectAccount: vi.fn().mockReturnValue({ account: { email: 'test@example.com' } }),
         getTokenForAccount: vi.fn().mockResolvedValue('fake-token'),
         isAllRateLimited: vi.fn().mockReturnValue(false),
-        resetAllRateLimits: vi.fn()
+        resetAllRateLimits: vi.fn(),
+        clearProjectCache: vi.fn(),
+        clearTokenCache: vi.fn()
     },
     ensureInitialized: vi.fn().mockResolvedValue(undefined),
     FALLBACK_ENABLED: false
@@ -143,5 +150,22 @@ describe('Anthropic Controller - Model Mapping & Usage Stats (#402)', () => {
             });
         expect(streamRes.status).toBe(200);
         expect(usageStats.track).toHaveBeenCalledWith('claude-sonnet-4-6');
+    });
+
+    it('invokes forceRefresh on authentication_error without ReferenceError and handles empty request body as 400', async () => {
+        const emptyBodyRes = await request(app).post('/messages');
+        expect(emptyBodyRes.status).toBe(400);
+        expect(emptyBodyRes.body.error?.type).toBe('invalid_request_error');
+
+        vi.mocked(cloudcode.sendMessage).mockRejectedValueOnce(new Error('401 authentication_error: token expired'));
+        const authRes = await request(app)
+            .post('/messages')
+            .send({ model: 'gemini-2.5-pro', messages: [{ role: 'user', content: 'hi' }] });
+
+        expect(authRes.status).toBe(401);
+        expect(accountManager.clearProjectCache).toHaveBeenCalledTimes(1);
+        expect(accountManager.clearTokenCache).toHaveBeenCalledTimes(1);
+        expect(forceRefresh).toHaveBeenCalledTimes(1);
+        expect(authRes.body.error?.message).toBe('Token was expired and has been refreshed. Please retry your request.');
     });
 });

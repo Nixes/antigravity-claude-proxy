@@ -10,10 +10,15 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const SIGNATURE_STORE_FOR_TESTS = path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'sigstore-tests-')),
-    'store.json'
-);
+const SIGNATURE_STORE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sigstore-tests-'));
+const SIGNATURE_STORE_FOR_TESTS = path.join(SIGNATURE_STORE_DIR, 'store.json');
+process.once('exit', () => {
+    try {
+        fs.rmSync(SIGNATURE_STORE_DIR, { recursive: true, force: true });
+    } catch {
+        // Best-effort cleanup of test temp dir
+    }
+});
 
 const tests = [
     { name: 'Account Selection Strategies', file: 'test-strategies.cjs' },

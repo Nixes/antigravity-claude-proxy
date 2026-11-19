@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { accountManager, ensureInitialized, FALLBACK_ENABLED } from '../server-state.js';
+import { forceRefresh } from '../auth/token-extractor.js';
 import { sendMessage, sendMessageStream, isValidModel } from '../cloudcode/index.js';
 import { parseError } from '../utils/error-parser.js';
 import { config } from '../config.js';
@@ -41,7 +42,7 @@ anthropicRouter.post('/messages', async (req, res) => {
             top_k,
             temperature,
             google_search
-        } = req.body;
+        } = req.body ?? {};
 
         // Resolve model mapping (user config > built-in aliases)
         const modelId = resolveModelId(

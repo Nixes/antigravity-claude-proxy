@@ -322,4 +322,50 @@ describe('buildCloudCodeRequestFromStandard identity scrubbing (#364, #401, #404
     vi.stubEnv('ANTIGRAVITY_SCRUB_IDENTITY', 'Second=>2');
     expect(buildWithSystemText('First Second')).toContain('First 2');
   });
+
+  it('allows overriding defaults and extending with longer phrases containing default terms', () => {
+    vi.stubEnv('ANTIGRAVITY_SCRUB_IDENTITY', 'Anthropic=>CustomCorp,Anthropic Labs=>MyLab');
+    expect(buildWithSystemText('Anthropic and Anthropic Labs')).toContain('CustomCorp and MyLab');
+  });
+
+  it('scrubs non-word-bounded custom terms without corrupting identifiers or emails', () => {
+    vi.stubEnv('ANTIGRAVITY_SCRUB_IDENTITY', 'C++=>Rust,@acme=>@team,.claude=>.config');
+    const out = buildWithSystemText('Use C++, @acme, and .claude! Keep user@acme.com and foo.claude.');
+    expect(out).toContain('Use Rust, @team, and .config! Keep user@acme.com and foo.claude.');
+  });
+
+  it('omits <system-instructions> when scrubbing leaves only whitespace and isolates mixed functionResponse turns', () => {
+    vi.stubEnv('ANTIGRAVITY_SCRUB_IDENTITY', 'Secret=>');
+    const scrubbedEmptyPayload = buildCloudCodeRequestFromStandard(
+      {
+        model: 'test-model',
+        contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+        generationConfig: {},
+        systemInstruction: { parts: [{ text: 'Secret' }] }
+      },
+      'project-123',
+      'test@test.com'
+    );
+    expect(scrubbedEmptyPayload.request.contents).toEqual([{ role: 'user', parts: [{ text: 'hello' }] }]);
+
+    const mixedTurnPayload = buildCloudCodeRequestFromStandard(
+      {
+        model: 'test-model',
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: 'note' },
+            { functionResponse: { name: 'fn', response: { ok: true } } }
+          ]
+        }],
+        generationConfig: {},
+        systemInstruction: { parts: [{ text: 'Be brief.' }] }
+      },
+      'project-123',
+      'test@test.com'
+    );
+    expect(mixedTurnPayload.request.contents).toHaveLength(2);
+    expect(mixedTurnPayload.request.contents[0].parts).toEqual([{ text: '<system-instructions>\nBe brief.\n</system-instructions>' }]);
+    expect(mixedTurnPayload.request.contents[1].parts[1].functionResponse).toBeDefined();
+  });
 });

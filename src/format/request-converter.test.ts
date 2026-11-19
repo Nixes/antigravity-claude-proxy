@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { convertAnthropicToGoogle } from './request-converter.js';
+import { cacheSignature, clearAllSignatureCaches } from './signature-cache.js';
 import { config } from '../config.js';
 
 describe('convertAnthropicToGoogle', () => {
@@ -169,6 +170,89 @@ describe('convertAnthropicToGoogle', () => {
                 messages: [{ role: 'user', content: 'hi' }]
             });
             expect(result.generationConfig.maxOutputTokens).toBe(65536);
+        });
+
+        it('clamps Gemini thinkingBudget below capped maxOutputTokens', () => {
+            const result = convertAnthropicToGoogle({
+                model: 'gemini-3.8-flash-tiered',
+                max_tokens: 100000,
+                thinking: { type: 'enabled', budget_tokens: 80000 },
+                messages: [{ role: 'user', content: 'hi' }]
+            });
+            expect(result.generationConfig.maxOutputTokens).toBe(65536);
+            expect(result.generationConfig.thinkingConfig?.thinkingBudget).toBe(64512);
+            expect(result.generationConfig.thinkingConfig!.thinkingBudget!).toBeLessThan(result.generationConfig.maxOutputTokens!);
+        });
+    });
+
+    describe('Thinking disable & cross-model recovery', () => {
+        afterEach(() => {
+            clearAllSignatureCaches();
+        });
+
+        it('respects thinking: { type: "disabled" } for both Claude and Gemini thinking models', () => {
+            const claudeRes = convertAnthropicToGoogle({
+                model: 'claude-opus-4-6-thinking',
+                max_tokens: 4096,
+                thinking: { type: 'disabled' },
+                messages: [{ role: 'user', content: 'hi' }]
+            });
+            expect(claudeRes.generationConfig.thinkingConfig).toBeUndefined();
+
+            const geminiRes = convertAnthropicToGoogle({
+                model: 'gemini-3.8-flash-tiered',
+                max_tokens: 4096,
+                thinking: { type: 'disabled' },
+                messages: [{ role: 'user', content: 'hi' }]
+            });
+            expect(geminiRes.generationConfig.thinkingConfig).toBeUndefined();
+        });
+
+        it('skips recovery for Gemini when tool_use has a valid cached signature, but triggers recovery when switching to Claude', () => {
+            const longSig = 'g'.repeat(80);
+            cacheSignature('toolu_gem_1', longSig);
+
+            const messages = [
+                { role: 'user', content: 'run tool' },
+                {
+                    role: 'assistant',
+                    content: [{ type: 'tool_use', id: 'toolu_gem_1', name: 'my_tool', input: {} }]
+                },
+                {
+                    role: 'user',
+                    content: [{ type: 'tool_result', tool_use_id: 'toolu_gem_1', content: 'done' }]
+                }
+            ];
+
+            const geminiRes = convertAnthropicToGoogle({
+                model: 'gemini-3.8-flash-tiered',
+                messages
+            });
+            expect(geminiRes.contents.map(c => c.parts[0].text)).not.toContain('[Tool execution completed.]');
+
+            const claudeFromCacheRes = convertAnthropicToGoogle({
+                model: 'claude-opus-4-6-thinking',
+                messages
+            });
+            expect(claudeFromCacheRes.contents.some(c => c.parts.some(p => p.text === '[Tool execution completed.]'))).toBe(true);
+            expect(claudeFromCacheRes.contents.some(c => c.parts.some(p => p.text === '[Continue]'))).toBe(true);
+
+            const claudeFromInlineRes = convertAnthropicToGoogle({
+                model: 'claude-opus-4-6-thinking',
+                messages: [
+                    { role: 'user', content: 'run tool' },
+                    {
+                        role: 'assistant',
+                        content: [{ type: 'tool_use', id: 'toolu_inline', name: 'my_tool', input: {}, thoughtSignature: longSig }]
+                    },
+                    {
+                        role: 'user',
+                        content: [{ type: 'tool_result', tool_use_id: 'toolu_inline', content: 'done' }]
+                    }
+                ]
+            });
+            expect(claudeFromInlineRes.contents.some(c => c.parts.some(p => p.text === '[Tool execution completed.]'))).toBe(true);
+            expect(claudeFromInlineRes.contents.some(c => c.parts.some(p => p.text === '[Continue]'))).toBe(true);
         });
     });
 });

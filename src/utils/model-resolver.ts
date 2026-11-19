@@ -13,13 +13,16 @@ export function resolveModelId(
     requestedModel: string,
     modelMapping?: Record<string, ModelMappingEntry>
 ): string {
-    const mapped = modelMapping?.[requestedModel]?.mapping;
+    const mapped = modelMapping && Object.hasOwn(modelMapping, requestedModel)
+        ? modelMapping[requestedModel]?.mapping
+        : undefined;
     if (mapped) {
         logger.info(`[Server] Mapping model ${requestedModel} -> ${mapped}`);
         return mapped;
     }
 
-    const builtin = (BUILTIN_MODEL_MAPPINGS as Record<string, string>)[requestedModel];
+    const builtinMap = BUILTIN_MODEL_MAPPINGS as Record<string, string>;
+    const builtin = Object.hasOwn(builtinMap, requestedModel) ? builtinMap[requestedModel] : undefined;
     if (builtin) {
         logger.info(`[Server] Built-in mapping model ${requestedModel} -> ${builtin}`);
         return builtin;

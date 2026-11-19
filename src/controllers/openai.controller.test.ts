@@ -146,4 +146,16 @@ describe('OpenAI Controller - Model Mapping & Usage Stats (#402)', () => {
         expect(res.status).toBe(500);
         expect(usageStats.track).not.toHaveBeenCalled();
     });
+
+    it('handles empty request body safely without TypeError when mounted standalone', async () => {
+        vi.mocked(openaiApi.parseOpenAIRequest).mockImplementationOnce(() => {
+            throw new Error('invalid_request_error: messages is required and must be an array');
+        });
+
+        const res = await request(app).post('/chat/completions');
+
+        expect(res.status).toBe(400);
+        expect(res.body.error?.type).toBe('invalid_request_error');
+        expect(vi.mocked(openaiApi.parseOpenAIRequest).mock.calls[0][0]).toEqual({ model: 'gpt-4o' });
+    });
 });

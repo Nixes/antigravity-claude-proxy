@@ -159,6 +159,7 @@ describe('Model Registry & Routing', () => {
         expect(await isValidModel('gemini-2.5-pro', 'fake-token')).toBe(true);
 
         expect(await isValidModel('gemini-4-argon', 'fake-token')).toBe(false);
+        expect(await isValidModel('gemini-4-argon-disabled', 'fake-token')).toBe(false);
         expect(await isValidModel('tab_flash_lite_preview', 'fake-token')).toBe(false);
         expect(await isValidModel('gpt-oss-120b-medium', 'fake-token')).toBe(false);
     });

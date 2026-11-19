@@ -268,10 +268,11 @@ function getVersionWindows() {
         const localAppData = process.env.LOCALAPPDATA;
         const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
 
-        const possiblePaths = [
-            join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
-            join(programFiles, 'Antigravity', 'Antigravity.exe')
-        ];
+        const possiblePaths = [];
+        if (localAppData) {
+            possiblePaths.push(join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'));
+        }
+        possiblePaths.push(join(programFiles, 'Antigravity', 'Antigravity.exe'));
 
         for (const exePath of possiblePaths) {
             if (existsSync(exePath)) {

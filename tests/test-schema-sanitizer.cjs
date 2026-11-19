@@ -334,7 +334,18 @@ async function runTests() {
         assertGoogleSchemaValid(result);
     });
 
-    // Test 15: Full suite of prior schemas still satisfies the structural invariant
+    // Test 15: Tuple-form `items: [true]` / mixed boolean+object entries fallback cleanly
+    test('Tuple-form items containing boolean entries collapses to an object schema', () => {
+        const onlyBool = cleanSchema({ type: 'array', items: [true] });
+        assertEqual(onlyBool.items, { type: 'STRING' }, '[true] should fall back to STRING');
+        assertGoogleSchemaValid(onlyBool);
+
+        const mixed = cleanSchema({ type: 'array', items: [true, { type: 'number' }] });
+        assertEqual(mixed.items, { type: 'NUMBER' }, '[true, {type: "number"}] should pick NUMBER');
+        assertGoogleSchemaValid(mixed);
+    });
+
+    // Test 16: Full suite of prior schemas still satisfies the structural invariant
     test('All prior real-world schemas satisfy the Google schema invariant', () => {
         const schema = {
             type: 'object',

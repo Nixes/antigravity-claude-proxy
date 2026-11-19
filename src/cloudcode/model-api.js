@@ -78,11 +78,15 @@ export async function listModels(token) {
     recordModels(data);
     const supportedEntries = Object.entries(data.models).filter(([modelId]) => isSupportedModel(modelId));
 
-    // Warm the model validation cache with every supported id, unfiltered -
-    // isValidModel() (the actual request-time gate) must keep accepting an
-    // id a client already has configured even if it's hidden from the
-    // listing below.
-    modelCache.validModels = new Set(supportedEntries.map(([modelId]) => modelId));
+    // Warm the model validation cache with every supported, non-disabled id -
+    // isValidModel() (the actual request-time gate) must keep accepting legacy
+    // ids a client already has configured even if hidden from listing, while
+    // rejecting *-disabled placeholder models.
+    modelCache.validModels = new Set(
+        supportedEntries
+            .filter(([modelId]) => !isDisabledPlaceholder(modelId))
+            .map(([modelId]) => modelId)
+    );
     modelCache.lastFetched = Date.now();
 
     const modelList = supportedEntries
@@ -334,7 +338,9 @@ async function populateModelCache(token, projectId = null) {
             const data = await fetchAvailableModels(token, projectId);
             if (data && data.models) {
                 recordModels(data);
-                const validIds = Object.keys(data.models).filter(modelId => isSupportedModel(modelId));
+                const validIds = Object.keys(data.models).filter(
+                    modelId => isSupportedModel(modelId) && !isDisabledPlaceholder(modelId)
+                );
                 modelCache.validModels = new Set(validIds);
                 modelCache.lastFetched = Date.now();
                 logger.debug(`[CloudCode] Model cache populated with ${validIds.length} models`);

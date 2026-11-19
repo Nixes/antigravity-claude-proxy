@@ -135,7 +135,10 @@ export function hasGeminiHistory(messages) {
     return messages.some(msg =>
         Array.isArray(msg.content) &&
         msg.content.some(block =>
-            block.type === 'tool_use' && block.thoughtSignature !== undefined
+            block && block.type === 'tool_use' && (
+                block.thoughtSignature !== undefined ||
+                Boolean(block.id && getCachedSignature(block.id))
+            )
         )
     );
 }
@@ -429,15 +432,21 @@ export function reorderAssistantContent(content) {
  * that will be dropped later.
  *
  * @param {Object} message - Message to check
+ * @param {string|null} [targetFamily=null] - Target model family ('claude' or 'gemini')
  * @returns {boolean} True if message has valid signed thinking blocks
  */
-function messageHasValidThinking(message) {
+function messageHasValidThinking(message, targetFamily = null) {
     const content = message.content || message.parts || [];
     if (!Array.isArray(content)) return false;
     return content.some(block => {
-        if (block && (block.type === 'tool_use' || block.functionCall)) {
+        if (!block) return false;
+        if (block.type === 'tool_use' || block.functionCall) {
+            // Signed tool_use/functionCall blocks only satisfy Gemini's thinking
+            // requirement; Claude always needs its own Anthropic thinking blocks.
+            if (targetFamily !== 'gemini') return false;
             if (block.thoughtSignature && block.thoughtSignature.length >= MIN_SIGNATURE_LENGTH) return true;
-            if (block.id && getCachedSignature(block.id)) return true;
+            const cachedSig = block.id ? getCachedSignature(block.id) : null;
+            if (cachedSig && cachedSig.length >= MIN_SIGNATURE_LENGTH) return true;
             return false;
         }
         if (!isThinkingPart(block)) return false;
@@ -497,9 +506,10 @@ function isPlainUserMessage(message) {
  * 2. Interrupted tool: assistant has tool_use followed by plain user message (interrupted)
  *
  * @param {Array<Object>} messages - Array of messages
+ * @param {string|null} [targetFamily=null] - Target model family ('claude' or 'gemini')
  * @returns {Object} State object with inToolLoop, interruptedTool, turnHasThinking, etc.
  */
-function analyzeConversationState(messages) {
+function analyzeConversationState(messages, targetFamily = null) {
     if (!Array.isArray(messages) || messages.length === 0) {
         return { inToolLoop: false, interruptedTool: false, turnHasThinking: false, toolResultCount: 0 };
     }
@@ -519,7 +529,7 @@ function analyzeConversationState(messages) {
 
     const lastAssistant = messages[lastAssistantIdx];
     const hasToolUse = messageHasToolUse(lastAssistant);
-    const hasThinking = messageHasValidThinking(lastAssistant);
+    const hasThinking = messageHasValidThinking(lastAssistant, targetFamily);
 
     // Count trailing tool results after the assistant message
     let toolResultCount = 0;
@@ -560,10 +570,11 @@ function analyzeConversationState(messages) {
  * during recovery (not here).
  *
  * @param {Array<Object>} messages - Array of messages
+ * @param {string|null} [targetFamily=null] - Target model family ('claude' or 'gemini')
  * @returns {boolean} True if thinking recovery is needed
  */
-export function needsThinkingRecovery(messages) {
-    const state = analyzeConversationState(messages);
+export function needsThinkingRecovery(messages, targetFamily = null) {
+    const state = analyzeConversationState(messages, targetFamily);
 
     // Recovery is only needed in tool loops or interrupted tools
     if (!state.inToolLoop && !state.interruptedTool) return false;
@@ -652,7 +663,7 @@ export function closeToolLoopForThinking(messages, targetFamily = null) {
     ) {
         return messages;
     }
-    const state = analyzeConversationState(messages);
+    const state = analyzeConversationState(messages, targetFamily);
 
     // Handle neither tool loop nor interrupted tool
     if (!state.inToolLoop && !state.interruptedTool) return messages;

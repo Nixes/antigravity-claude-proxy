@@ -682,10 +682,11 @@ export function cleanSchema(schema) {
             result.items = { type: 'STRING' };
         } else if (Array.isArray(result.items)) {
             // Tuple-form `items: [...]` - Google only supports one items
-            // schema, so collapse to the most informative entry.
+            // schema, so collapse to the most informative object entry.
             let best = null;
             let bestScore = -1;
             for (const option of result.items) {
+                if (!option || typeof option !== 'object' || Array.isArray(option)) continue;
                 const score = scoreSchemaOption(option);
                 if (score > bestScore) {
                     bestScore = score;

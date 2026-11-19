@@ -183,6 +183,7 @@ function writeStoreAsync() {
         } catch (error) {
             failed = true;
             dirty = true;
+            await fs.promises.rm(tmp, { force: true }).catch(() => {});
             reportStoreError('flush', error);
         }
     })().finally(() => {
@@ -216,8 +217,19 @@ loadFromDisk();
 periodicTimer = setInterval(() => writeStoreAsync(), PERIODIC_FLUSH_MS);
 if (typeof periodicTimer.unref === 'function') periodicTimer.unref();
 
-for (const signal of ['SIGTERM', 'SIGINT', 'exit']) {
-    process.on(signal, () => writeStoreSync());
+// Prepend exit flush so it runs before any earlier-registered temp cleanup listeners.
+process.prependListener('exit', () => writeStoreSync());
+
+for (const signal of ['SIGTERM', 'SIGINT']) {
+    const onSignal = () => {
+        writeStoreSync();
+        // Do not swallow SIGINT/SIGTERM in standalone scripts that have no other handler.
+        if (process.listenerCount(signal) === 1) {
+            process.off(signal, onSignal);
+            process.kill(process.pid, signal);
+        }
+    };
+    process.on(signal, onSignal);
 }
 
 /**

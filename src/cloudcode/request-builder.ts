@@ -69,13 +69,22 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Match terms as whole words only so identifiers like convertAnthropicToGoogle()
-// or AnthropicRequest are left untouched. Read env var per call to avoid global state.
+// Match terms with whole-token/word boundaries while still supporting non-\w
+// characters (e.g. C++, @org, .claude). Read env var per call to avoid global state.
 function getIdentityScrubRules(): CompiledIdentityScrubRule[] {
-  return [
-    ...DEFAULT_IDENTITY_SCRUB,
-    ...parseIdentityScrubEnv(process.env.ANTIGRAVITY_SCRUB_IDENTITY)
-  ].map(([term, replacement]) => [new RegExp(`\\b${escapeRegExp(term)}\\b`, 'g'), replacement]);
+  const customRules = parseIdentityScrubEnv(process.env.ANTIGRAVITY_SCRUB_IDENTITY);
+  const customMap = new Map<string, string>(customRules);
+  const defaultTerms = new Set(DEFAULT_IDENTITY_SCRUB.map(([term]) => term));
+
+  const merged: IdentityScrubRule[] = [
+    ...customRules.filter(([term]) => !defaultTerms.has(term)),
+    ...DEFAULT_IDENTITY_SCRUB.map(([term, replacement]): IdentityScrubRule => [
+      term,
+      customMap.has(term) ? customMap.get(term)! : replacement
+    ])
+  ];
+
+  return merged.map(([term, replacement]) => [new RegExp(`(?<!\\w)${escapeRegExp(term)}(?!\\w)`, 'g'), replacement]);
 }
 
 function scrubClientIdentity(text: string, rules: readonly CompiledIdentityScrubRule[]): string {
@@ -98,9 +107,9 @@ function prependCallerSystemPrompt(googleRequest: CloudCodeInnerRequest, systemT
   if (!systemText) return;
   const part: GPart = { text: `<system-instructions>\n${systemText}\n</system-instructions>` };
   const first: GContent | undefined = googleRequest.contents?.[0];
-  const firstIsFunctionResponse = Boolean(first?.parts?.[0]?.functionResponse);
+  const firstHasFunctionResponse = Boolean(first?.parts?.some((p) => Boolean(p?.functionResponse)));
 
-  if (first && first.role === 'user' && Array.isArray(first.parts) && !firstIsFunctionResponse) {
+  if (first && first.role === 'user' && Array.isArray(first.parts) && !firstHasFunctionResponse) {
     first.parts.unshift(part);
   } else {
     googleRequest.contents = [{ role: 'user', parts: [part] }, ...(googleRequest.contents || [])];
@@ -133,6 +142,7 @@ export function buildCloudCodeRequestFromStandard(
     .map((part) => stripBillingHeader(part.text || ''))
     .filter((text) => text.length > 0)
     .map((text) => scrubClientIdentity(text, scrubRules))
+    .filter((text) => text.trim().length > 0)
     .join('\n\n');
   prependCallerSystemPrompt(googleRequest, callerSystemText);
 

@@ -65,7 +65,7 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
     const modelFamily = getModelFamily(modelName);
     const isClaudeModel = modelFamily === 'claude';
     const isGeminiModel = modelFamily === 'gemini';
-    const isThinking = isThinkingModel(modelName);
+    const isThinking = isThinkingModel(modelName) && thinking?.type !== 'disabled';
 
     const googleRequest: any = {
         model: modelName,
@@ -115,7 +115,7 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
     // Gemini needs recovery for tool loops/interrupted tools (stripped thinking)
     let processedMessages = messages;
 
-    if (isGeminiModel && isThinking && needsThinkingRecovery(messages)) {
+    if (isGeminiModel && isThinking && needsThinkingRecovery(messages, 'gemini')) {
         logger.debug('[RequestConverter] Applying thinking recovery for Gemini');
         processedMessages = closeToolLoopForThinking(messages, 'gemini');
     }
@@ -123,7 +123,7 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
     // For Claude: apply recovery for cross-model (Gemini→Claude) or unsigned thinking blocks
     // Unsigned thinking blocks occur when Claude Code strips signatures it doesn't understand
     const needsClaudeRecovery = hasGeminiHistory(messages) || hasUnsignedThinkingBlocks(messages);
-    if (isClaudeModel && isThinking && needsClaudeRecovery && needsThinkingRecovery(messages)) {
+    if (isClaudeModel && isThinking && needsClaudeRecovery && needsThinkingRecovery(messages, 'claude')) {
         logger.debug('[RequestConverter] Applying thinking recovery for Claude');
         processedMessages = closeToolLoopForThinking(messages, 'claude');
     }
@@ -298,6 +298,19 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
     if (isGeminiModel && googleRequest.generationConfig.maxOutputTokens > GEMINI_MAX_OUTPUT_TOKENS) {
         logger.debug(`[RequestConverter] Capping Gemini max_tokens from ${googleRequest.generationConfig.maxOutputTokens} to ${GEMINI_MAX_OUTPUT_TOKENS}`);
         googleRequest.generationConfig.maxOutputTokens = GEMINI_MAX_OUTPUT_TOKENS;
+    }
+
+    if (
+        isGeminiModel &&
+        googleRequest.generationConfig.maxOutputTokens !== undefined &&
+        googleRequest.generationConfig.thinkingConfig?.thinkingBudget !== undefined &&
+        googleRequest.generationConfig.thinkingConfig.thinkingBudget >= googleRequest.generationConfig.maxOutputTokens
+    ) {
+        const clampedBudget = Math.max(1, googleRequest.generationConfig.maxOutputTokens - 1024);
+        logger.debug(
+            `[RequestConverter] Clamping Gemini thinkingBudget from ${googleRequest.generationConfig.thinkingConfig.thinkingBudget} to ${clampedBudget} to fit under maxOutputTokens (${googleRequest.generationConfig.maxOutputTokens})`
+        );
+        googleRequest.generationConfig.thinkingConfig.thinkingBudget = clampedBudget;
     }
 
     return googleRequest as StandardRequest;

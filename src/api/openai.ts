@@ -79,10 +79,18 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
       for (const call of msg.tool_calls) {
         if (call.type === 'function') {
           toolCallIdToName.set(call.id, call.function.name);
+          let parsedArgs: Record<string, unknown> = {};
+          if (call.function.arguments) {
+            try {
+              parsedArgs = JSON.parse(call.function.arguments) as Record<string, unknown>;
+            } catch {
+              throw new Error(`invalid_request_error: Invalid JSON in tool_calls function arguments for "${call.function.name}"`);
+            }
+          }
           parts.push({
             functionCall: {
               name: call.function.name,
-              args: call.function.arguments ? JSON.parse(call.function.arguments) : {},
+              args: parsedArgs,
             },
             thoughtSignature: getCachedSignature(call.id) || undefined,
           });
@@ -167,17 +175,28 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
   }
 
   if (req.tool_choice) {
-    standardReq.toolConfig = standardReq.toolConfig || {};
     if (req.tool_choice === 'auto') {
+      standardReq.toolConfig = standardReq.toolConfig || {};
       standardReq.toolConfig.functionCallingConfig = { mode: 'AUTO' };
     } else if (req.tool_choice === 'none') {
+      standardReq.toolConfig = standardReq.toolConfig || {};
       standardReq.toolConfig.functionCallingConfig = { mode: 'NONE' };
     } else if (req.tool_choice === 'required') {
+      standardReq.toolConfig = standardReq.toolConfig || {};
       standardReq.toolConfig.functionCallingConfig = { mode: 'ANY' };
-    } else if (typeof req.tool_choice === 'object' && (req.tool_choice as any).type === 'function') {
+    } else if (
+      typeof req.tool_choice === 'object' &&
+      req.tool_choice !== null &&
+      (req.tool_choice as { type?: unknown }).type === 'function'
+    ) {
+      const fnName = (req.tool_choice as { function?: { name?: unknown } }).function?.name;
+      if (typeof fnName !== 'string' || fnName.length === 0) {
+        throw new Error('invalid_request_error: tool_choice function.name must be a non-empty string');
+      }
+      standardReq.toolConfig = standardReq.toolConfig || {};
       standardReq.toolConfig.functionCallingConfig = {
         mode: 'ANY',
-        allowedFunctionNames: [(req.tool_choice as any).function.name],
+        allowedFunctionNames: [fnName],
       };
     }
   }
@@ -210,7 +229,7 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): Open
   
   for (const part of parts) {
     if (part.thought) {
-      content += `<think>\n${part.text}\n</think>\n\n`;
+      content += `<think>\n${part.text || ''}\n</think>\n\n`;
     } else if (part.text) {
       content += part.text;
     } else if (part.functionCall) {
@@ -220,7 +239,7 @@ export function formatOpenAIResponse(res: StandardResponse, model: string): Open
         type: 'function',
         function: {
           name: part.functionCall.name,
-          arguments: JSON.stringify(part.functionCall.args),
+          arguments: JSON.stringify(part.functionCall.args || {}),
         },
       });
       if (part.thoughtSignature) {
@@ -275,6 +294,7 @@ export interface OpenAIStreamState {
   hasEmittedRole: boolean;
   toolCallIndex: number;
   isThinking?: boolean;
+  hasToolCalls?: boolean;
 }
 
 export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenAIStreamState): string | null {
@@ -352,6 +372,7 @@ export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenA
       if (part.thoughtSignature) {
         cacheSignature(toolCallId, part.thoughtSignature);
       }
+      state.hasToolCalls = true;
 
       const toolChunk = {
         id: state.id,
@@ -364,7 +385,7 @@ export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenA
           type: 'function',
           function: {
             name: part.functionCall.name,
-            arguments: JSON.stringify(part.functionCall.args),
+            arguments: JSON.stringify(part.functionCall.args || {}),
           },
         }]}, finish_reason: null }],
       };
@@ -399,7 +420,7 @@ export function formatOpenAIStreamChunk(chunk: StandardStreamChunk, state: OpenA
     }
     let finish_reason: string;
     if (candidate.finishReason === 'MAX_TOKENS') finish_reason = 'length';
-    else if (candidate.finishReason === 'TOOL_USE') finish_reason = 'tool_calls';
+    else if (candidate.finishReason === 'TOOL_USE' || state.hasToolCalls || state.toolCallIndex > 0) finish_reason = 'tool_calls';
     else finish_reason = 'stop';
     const finishChunk = {
       id: state.id,

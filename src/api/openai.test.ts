@@ -694,5 +694,64 @@ describe('OpenAI spec compliance regressions', () => {
       expect(Object.prototype.hasOwnProperty.call(parsed.choices[0], 'finish_reason')).toBe(true);
       expect(parsed.choices[0].finish_reason).toBeNull();
     });
+
+    it('emits finish_reason "tool_calls" when functionCall is streamed before finishReason STOP', () => {
+      const state = makeState(true);
+      const toolChunk = formatOpenAIStreamChunk(
+        { candidates: [{ content: { parts: [{ functionCall: { name: 'get_weather', args: undefined as unknown as Record<string, unknown> } }] } }] },
+        state
+      ) as string;
+      const parsedTool = JSON.parse(toolChunk.trim().replace(/^data: /, ''));
+      expect(parsedTool.choices[0].delta.tool_calls[0].function.arguments).toBe('{}');
+
+      const endChunk = formatOpenAIStreamChunk(
+        { candidates: [{ finishReason: 'STOP' }] },
+        state
+      ) as string;
+      const parsedEnd = JSON.parse(endChunk.trim().replace(/^data: /, ''));
+      expect(parsedEnd.choices[0].finish_reason).toBe('tool_calls');
+    });
+
+    it('defaults omitted functionCall.args and thought part.text in formatOpenAIResponse', () => {
+      const res = formatOpenAIResponse(
+        {
+          candidates: [{
+            content: {
+              parts: [
+                { thought: true },
+                { functionCall: { name: 'ping', args: undefined as unknown as Record<string, unknown> } }
+              ]
+            },
+            finishReason: 'STOP'
+          }],
+          usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 2 }
+        },
+        'test-model'
+      );
+      expect(res.choices[0].message.content).toBe('<think>\n\n</think>\n\n');
+      expect(res.choices[0].message.tool_calls?.[0].function.arguments).toBe('{}');
+      expect(res.choices[0].finish_reason).toBe('tool_calls');
+    });
+
+    it('throws invalid_request_error on malformed tool_calls JSON or invalid function tool_choice', () => {
+      expect(() =>
+        parseOpenAIRequest({
+          model: 'test-model',
+          messages: [{
+            role: 'assistant',
+            content: null,
+            tool_calls: [{ id: 'c1', type: 'function', function: { name: 'f1', arguments: '{not-json' } }]
+          }]
+        })
+      ).toThrow('invalid_request_error');
+
+      expect(() =>
+        parseOpenAIRequest({
+          model: 'test-model',
+          messages: [],
+          tool_choice: { type: 'function', function: {} }
+        })
+      ).toThrow('invalid_request_error');
+    });
   });
 });
