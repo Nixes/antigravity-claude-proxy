@@ -6,6 +6,8 @@ import { parseOpenAIRequest, formatOpenAIResponse, formatOpenAIStreamChunk } fro
 import { parseError } from '../utils/error-parser.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { resolveModelId } from '../utils/model-resolver.js';
+import usageStats from '../modules/usage-stats.js';
 
 const openaiRouter = Router();
 
@@ -17,13 +19,10 @@ openaiRouter.post('/chat/completions', async (req: any, res: any) => {
     try {
         await ensureInitialized();
 
-        let requestedModel = req.body.model || 'gpt-4o';
-        const modelMapping = config.modelMapping || {};
-        if (modelMapping[requestedModel] && modelMapping[requestedModel].mapping) {
-            const targetModel = modelMapping[requestedModel].mapping;
-            logger.info(`[Server] Mapping model ${requestedModel} -> ${targetModel}`);
-            requestedModel = targetModel;
-        }
+        const requestedModel = resolveModelId(
+            req.body.model || 'gpt-4o',
+            config.modelMapping
+        );
 
         const standardRequest = parseOpenAIRequest({ ...req.body, model: requestedModel });
 
@@ -53,6 +52,7 @@ openaiRouter.post('/chat/completions', async (req: any, res: any) => {
                 const generator = sendMessageStreamStandard(standardRequest, accountManager, FALLBACK_ENABLED);
                 
                 const firstResult = await generator.next();
+                usageStats.track(modelId);
 
                 res.status(200);
                 res.setHeader('Content-Type', 'text/event-stream');
@@ -105,6 +105,7 @@ openaiRouter.post('/chat/completions', async (req: any, res: any) => {
             }
         } else {
             const googleResponse = await sendMessageStandard(standardRequest, accountManager, FALLBACK_ENABLED);
+            usageStats.track(modelId);
             const openAiResponse = formatOpenAIResponse(googleResponse as any, requestedModel);
             res.json(openAiResponse);
         }
