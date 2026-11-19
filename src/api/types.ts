@@ -21,7 +21,7 @@ export interface FunctionDeclaration {
 export interface StandardRequest {
   model: string;
   contents: GContent[];
-  systemInstruction?: { parts: { text: string }[] };
+  systemInstruction?: { role?: string; parts: { text: string }[] };
   generationConfig: {
     maxOutputTokens?: number;
     temperature?: number;

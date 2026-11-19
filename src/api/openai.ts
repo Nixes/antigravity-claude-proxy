@@ -1,8 +1,27 @@
 import { StandardRequest, StandardResponse, StandardStreamChunk, GContent, GPart, OpenAIRequest, OpenAIResponse } from './types.js';
 import { cacheSignature, getCachedSignature } from '../format/signature-cache.js';
 import { formatGroundingFootnotes } from '../format/grounding-formatter.js';
-import { getModelFamily } from '../constants.js';
+import { sanitizeSchema, cleanSchema } from '../format/schema-sanitizer.js';
+import { GEMINI_MAX_OUTPUT_TOKENS, getModelFamily } from '../constants.js';
 import { config } from '../config.js';
+
+interface OpenAIFunctionTool {
+  type: 'function';
+  function: {
+    name: string;
+    description?: string;
+    parameters?: Record<string, unknown>;
+  };
+}
+
+function isOpenAIFunctionTool(tool: unknown): tool is OpenAIFunctionTool {
+  return (
+    typeof tool === 'object' &&
+    tool !== null &&
+    (tool as { type?: unknown }).type === 'function' &&
+    typeof (tool as { function?: { name?: unknown } }).function?.name === 'string'
+  );
+}
 export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
   if (!req.messages || !Array.isArray(req.messages)) {
     throw new Error('invalid_request_error: messages is required and must be an array');
@@ -117,18 +136,29 @@ export function parseOpenAIRequest(req: OpenAIRequest): StandardRequest {
 
   if (req.tools && Array.isArray(req.tools)) {
     const functionDeclarations = req.tools
-      .filter((t: unknown) => (t as any).type === 'function')
-      .map((t: unknown) => ({
-        name: (t as any).function.name,
-        description: (t as any).function.description || '',
-        parameters: (t as any).function.parameters || { type: 'object' },
-      }));
+      .filter(isOpenAIFunctionTool)
+      .map((t) => {
+        const rawParameters = t.function.parameters || { type: 'object' };
+        const parameters = cleanSchema(sanitizeSchema(rawParameters)) as Record<string, unknown>;
+        return {
+          name: t.function.name,
+          description: t.function.description || '',
+          parameters,
+        };
+      });
     if (functionDeclarations.length > 0) {
       standardReq.tools = [{ functionDeclarations }];
     }
   }
 
   const isGeminiModel = getModelFamily(req.model) === 'gemini';
+  if (
+    isGeminiModel &&
+    generationConfig.maxOutputTokens !== undefined &&
+    generationConfig.maxOutputTokens > GEMINI_MAX_OUTPUT_TOKENS
+  ) {
+    generationConfig.maxOutputTokens = GEMINI_MAX_OUTPUT_TOKENS;
+  }
   let addedGoogleSearch = false;
   if ((req.google_search === true || config.forceGoogleSearch) && isGeminiModel) {
     standardReq.tools = standardReq.tools || [];

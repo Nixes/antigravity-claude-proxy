@@ -185,7 +185,7 @@ describe('parseOpenAIRequest', () => {
   });
 
   describe('tool mapping', () => {
-    it('maps a tools array to functionDeclarations with name, description, parameters', () => {
+    it('maps a tools array to functionDeclarations with sanitized protobuf parameters', () => {
       const req = {
         model: 'test',
         messages: [],
@@ -193,7 +193,45 @@ describe('parseOpenAIRequest', () => {
       };
       const res = parseOpenAIRequest(req);
       expect(res.tools).toHaveLength(1);
-      expect(res.tools![0].functionDeclarations[0]).toEqual({ name: 'f1', description: 'desc', parameters: { type: 'object' } });
+      expect(res.tools![0].functionDeclarations[0]).toEqual({
+        name: 'f1',
+        description: 'desc',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            reason: { type: 'STRING', description: 'Reason for calling this tool' }
+          },
+          required: ['reason']
+        }
+      });
+    });
+
+    it('sanitizes nested arrays and stringifies non-string enum/const in OpenAI tool schemas', () => {
+      const req = {
+        model: 'gemini-3.8-flash-tiered',
+        messages: [],
+        max_tokens: 100000,
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'query_items',
+            parameters: {
+              type: 'object',
+              properties: {
+                where: { type: 'array', items: { type: 'array' } },
+                flag: { const: true },
+                count: { type: 'integer', enum: [1, 2] }
+              }
+            }
+          }
+        }]
+      };
+      const res = parseOpenAIRequest(req);
+      expect(res.generationConfig.maxOutputTokens).toBe(65536);
+      const props = res.tools![0].functionDeclarations[0].parameters?.properties as Record<string, Record<string, unknown>>;
+      expect(props.where).toEqual({ type: 'ARRAY', items: { type: 'ARRAY', items: { type: 'STRING' } } });
+      expect(props.flag.enum).toEqual(['true']);
+      expect(props.count.enum).toEqual(['1', '2']);
     });
 
     it('maps tool_choice "auto" to functionCallingConfig mode AUTO', () => {

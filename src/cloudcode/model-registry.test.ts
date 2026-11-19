@@ -48,6 +48,11 @@ const FIXTURE = {
             displayName: 'GPT-OSS 120B (Medium)',
             supportsThinking: true,
             apiProvider: 'API_PROVIDER_OPENAI_VERTEX'
+        },
+        'gemini-4-argon-disabled': {
+            displayName: 'Gemini 4 Argon (Disabled)',
+            supportsThinking: true,
+            apiProvider: 'API_PROVIDER_GOOGLE_GEMINI'
         }
     },
     agentModelSorts: [{
@@ -120,12 +125,12 @@ describe('Model Registry & Routing', () => {
         expect(isThinkingModel('claude-opus-4-6-thinking')).toBe(true);
     });
 
-    it('lists Gemini, Claude, and codename agent models while hiding internal/old/other-provider ids', async () => {
+    it('lists Gemini, Claude, and codename agent models while hiding internal/old/disabled/other-provider ids', async () => {
         const listing = await listModels('fake-token');
         const listedIds = listing.data.map((m: { id: string }) => m.id).sort();
 
         expect(listedIds).toEqual([CODENAME, 'claude-sonnet-5-5-low', 'gemini-3.8-flash-tiered'].sort());
-        for (const hidden of ['tab_flash_lite_preview', 'chat_23310', 'gpt-oss-120b-medium', 'gemini-2.5-pro']) {
+        for (const hidden of ['tab_flash_lite_preview', 'chat_23310', 'gpt-oss-120b-medium', 'gemini-2.5-pro', 'gemini-4-argon-disabled']) {
             expect(listedIds).not.toContain(hidden);
         }
 
