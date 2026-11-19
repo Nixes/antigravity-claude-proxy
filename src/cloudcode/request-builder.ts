@@ -116,7 +116,9 @@ export function buildCloudCodeRequestFromStandard(
   const googleRequest = JSON.parse(JSON.stringify(standardRequest)) as CloudCodeInnerRequest;
   delete googleRequest.model;
 
-  googleRequest.sessionId = deriveSessionId(null, accountEmail);
+  // Derive session ID BEFORE prepending <system-instructions> so session affinity
+  // hashes only the caller's actual first user turn.
+  googleRequest.sessionId = deriveSessionId(googleRequest, accountEmail);
 
   const systemParts: GPart[] = [
     { text: ANTIGRAVITY_SYSTEM_INSTRUCTION },

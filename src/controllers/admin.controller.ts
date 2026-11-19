@@ -3,7 +3,7 @@ import { accountManager, ensureInitialized } from '../server-state.js';
 import { formatDuration } from '../utils/helpers.js';
 import { getModelQuotas, getSubscriptionTier } from '../cloudcode/index.js';
 import { forceRefresh } from '../auth/token-extractor.js';
-import { clearThinkingSignatureCache } from '../format/signature-cache.js';
+import { clearAllSignatureCaches } from '../format/signature-cache.js';
 import { config } from '../config.js';
 import usageStats from '../modules/usage-stats.js';
 import { logger } from '../utils/logger.js';
@@ -11,13 +11,13 @@ import { logger } from '../utils/logger.js';
 const adminRouter = Router();
 
 /**
- * Test endpoint - Clear thinking signature cache
+ * Test endpoint - Clear all signature caches (in-memory + persisted store)
  * Used for testing cold cache scenarios in cross-model tests
  */
 adminRouter.post('/test/clear-signature-cache', (req, res) => {
-    clearThinkingSignatureCache();
-    logger.debug('[Test] Cleared thinking signature cache');
-    res.json({ success: true, message: 'Thinking signature cache cleared' });
+    clearAllSignatureCaches();
+    logger.debug('[Test] Cleared all signature caches and removed persisted store');
+    res.json({ success: true, message: 'All signature caches cleared' });
 });
 
 /**

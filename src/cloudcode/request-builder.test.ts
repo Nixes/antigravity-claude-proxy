@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildCloudCodeRequest, buildCloudCodeRequestFromStandard } from './request-builder.js';
+import { deriveSessionId } from './session-manager.js';
 import { ANTIGRAVITY_SYSTEM_INSTRUCTION } from '../constants.js';
 
 vi.mock('./session-manager.js', () => ({
@@ -44,10 +45,26 @@ describe('buildCloudCodeRequestFromStandard', () => {
     expect(payload.request.contents).toEqual([]);
   });
 
-  it('sets request.sessionId from deriveSessionId', () => {
-    const stdReq = { model: 'test-model', contents: [], generationConfig: {} };
+  it('sets request.sessionId from deriveSessionId before prepending <system-instructions>', () => {
+    const deriveMock = vi.mocked(deriveSessionId);
+    deriveMock.mockClear();
+    let seenPartsDuringSessionDerivation: Array<{ text?: string }> = [];
+    deriveMock.mockImplementationOnce((req) => {
+      const typed = req as { contents?: Array<{ parts?: Array<{ text?: string }> }> };
+      seenPartsDuringSessionDerivation = JSON.parse(JSON.stringify(typed?.contents?.[0]?.parts || []));
+      return 'mock-session-id';
+    });
+
+    const stdReq = {
+      model: 'test-model',
+      contents: [{ role: 'user' as const, parts: [{ text: 'actual prompt' }] }],
+      generationConfig: {},
+      systemInstruction: { parts: [{ text: 'dynamic system instructions' }] }
+    };
     const payload = buildCloudCodeRequestFromStandard(stdReq, 'project-123', 'test@test.com');
     expect(payload.request.sessionId).toBe('mock-session-id');
+    expect(seenPartsDuringSessionDerivation).toEqual([{ text: 'actual prompt' }]);
+    expect(payload.request.contents[0].parts[0].text).toContain('<system-instructions>');
   });
 
   it('preserves StandardRequest contents, generationConfig, and tools in payload.request', () => {

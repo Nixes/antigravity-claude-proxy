@@ -656,6 +656,14 @@ function stripInvalidThinkingBlocks(messages, targetFamily = null) {
  * @returns {Array<Object>} Modified messages with synthetic messages injected
  */
 export function closeToolLoopForThinking(messages, targetFamily = null) {
+    // Escape hatch (Gemini only): skip synthetic-message injection.
+    // Set ANTIGRAVITY_DISABLE_THINKING_RECOVERY=1 to activate.
+    if (
+        process.env.ANTIGRAVITY_DISABLE_THINKING_RECOVERY === '1' &&
+        targetFamily === 'gemini'
+    ) {
+        return messages;
+    }
     const state = analyzeConversationState(messages);
 
     // Handle neither tool loop nor interrupted tool

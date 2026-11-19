@@ -343,8 +343,12 @@ The proxy server can be configured using the following environment variables.
 | `HTTP_PROXY`, etc. | `http_proxy`, `HTTP_PROXY`, `https_proxy`, `HTTPS_PROXY` for routing requests. | (None) |
 | `ANTIGRAVITY_CLIENT_VERSION` | Force a specific Antigravity client version string for requests. | (Auto) |
 | `ANTIGRAVITY_CLIENT_VERSION_FALLBACK` | Override Antigravity client fallback version if auto-detection fails. | `1.110.0` |
-| `FALLBACK_ANTIGRAVITY_VERSION` | Override Antigravity fallback version if auto-detection fails. | `2.0.3` |
-| `ANTIGRAVITY_SCRUB_IDENTITY` | Extra comma-separated `Term=>Replacement` pairs applied to the client's system prompt, in addition to the built-in Hermes/Nous Research rules. Prevents opaque 429 errors caused by third-party AI product names. | (None) |
+| `FALLBACK_ANTIGRAVITY_VERSION` | Override Antigravity fallback version if auto-detection fails. | `2.32.0` |
+| `ANTIGRAVITY_SCRUB_IDENTITY` | Extra comma-separated `Term=>Replacement` pairs applied to the client's system prompt, in addition to the built-in Hermes/Nous Research/Claude Code/Anthropic rules. Prevents opaque 429 errors caused by third-party AI product names. | (None) |
+| `ANTIGRAVITY_SIGNATURE_STORE` | Path to the persisted thought-signature cache file. | `~/.config/antigravity-proxy/signature-store.json` |
+| `ANTIGRAVITY_SIGNATURE_CACHE_MAX_TOOL` | Maximum LRU entries kept in the tool signature cache. | `20000` |
+| `ANTIGRAVITY_SIGNATURE_CACHE_MAX_THINK` | Maximum LRU entries kept in the thinking-family signature cache. | `10000` |
+| `ANTIGRAVITY_DISABLE_THINKING_RECOVERY` | Set to `1` to skip synthetic tool-loop recovery message injection on Gemini models. | `0` |
 
 ---
 

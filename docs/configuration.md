@@ -21,7 +21,11 @@ The proxy supports the following environment variables:
 | `ANTIGRAVITY_CLIENT_VERSION` | Override the X-Client-Version header sent to the API (prevents "no longer supported" errors) | Auto-detected from product.json |
 | `ANTIGRAVITY_CLIENT_VERSION_FALLBACK` | Override the fallback X-Client-Version (used when product.json is not found) | `1.110.0` |
 | `CLAUDE_CONFIG_PATH` | Path to `.claude` directory for CLI settings (for systemd/service deployments) | `~/.claude` |
-| `ANTIGRAVITY_SCRUB_IDENTITY` | Extra `Term=>Replacement` pairs (comma-separated, e.g. `Nous Research=>the team,Hermes=>the assistant`) applied to the client's system prompt, in addition to the built-in Hermes/Nous Research rules. Cloud Code returns an opaque 429 "quota exhausted" error when the system prompt names a known third-party AI product | - |
+| `ANTIGRAVITY_SCRUB_IDENTITY` | Extra `Term=>Replacement` pairs (comma-separated, e.g. `Nous Research=>the team,Hermes=>the assistant`) applied to the client's system prompt, in addition to the built-in Hermes/Nous Research/Claude Code/Anthropic rules. Cloud Code returns an opaque 429 "quota exhausted" error when the system prompt names a known third-party AI product | - |
+| `ANTIGRAVITY_SIGNATURE_STORE` | Path to the persisted thought-signature cache file | `~/.config/antigravity-proxy/signature-store.json` |
+| `ANTIGRAVITY_SIGNATURE_CACHE_MAX_TOOL` | Maximum LRU entries kept in the tool signature cache | `20000` |
+| `ANTIGRAVITY_SIGNATURE_CACHE_MAX_THINK` | Maximum LRU entries kept in the thinking-family signature cache | `10000` |
+| `ANTIGRAVITY_DISABLE_THINKING_RECOVERY` | Set to `1` to skip synthetic tool-loop recovery message injection on Gemini models | `0` |
 
 ### Setting Environment Variables
 
