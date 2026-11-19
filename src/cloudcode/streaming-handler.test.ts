@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { StandardRequest } from '../api/types.js';
+import { AnthropicRequest, StandardRequest } from '../api/types.js';
 
 // ─── Module mocks (hoisted) ───────────────────────────────────────────────────
 
@@ -250,5 +250,75 @@ describe('sendMessageStreamStandard', () => {
     // The malformed line is silently skipped, only the valid chunk comes through
     expect(chunks).toHaveLength(1);
     expect(chunks[0].candidates[0].content.parts[0].text).toBe('good');
+  });
+});
+
+interface AnthropicStreamEvent {
+  type: string;
+  delta?: { type?: string; text?: string };
+}
+
+interface FetchCallOptions {
+  headers: Record<string, string>;
+  body: string;
+}
+
+describe('sendMessageStream', () => {
+  let sendMessageStream: typeof import('./streaming-handler.js').sendMessageStream;
+  let throttledFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    const handler = await import('./streaming-handler.js');
+    sendMessageStream = handler.sendMessageStream;
+    const helpers = await import('../utils/helpers.js');
+    throttledFetch = helpers.throttledFetch as ReturnType<typeof vi.fn>;
+    (helpers.sleep as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+  });
+
+  it('preserves X-Machine-Session-Id header on empty-response and 5xx retry requests', async () => {
+    throttledFetch
+      .mockResolvedValueOnce(makeOkSseResponse([]))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: vi.fn().mockResolvedValue('Internal Server Error'),
+      })
+      .mockResolvedValueOnce(
+        makeOkSseResponse([
+          {
+            response: {
+              candidates: [{ content: { parts: [{ text: 'recovered' }] }, finishReason: 'STOP' }],
+              usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3 },
+            },
+          },
+        ])
+      );
+
+    const request = {
+      model: 'gemini-3.8-flash-tiered',
+      messages: [{ role: 'user', content: 'hello' }],
+    } satisfies AnthropicRequest;
+
+    const events: AnthropicStreamEvent[] = [];
+    for await (const event of sendMessageStream(request, makeAccountManager(), false)) {
+      events.push(event as AnthropicStreamEvent);
+    }
+
+    expect(throttledFetch).toHaveBeenCalledTimes(3);
+
+    const initialCallOpts = throttledFetch.mock.calls[0][1] as FetchCallOptions;
+    const parsedBody = JSON.parse(initialCallOpts.body) as { request?: { sessionId?: string } };
+    const sessionId = parsedBody.request?.sessionId;
+    expect(typeof sessionId).toBe('string');
+    expect(sessionId!.length).toBeGreaterThan(0);
+
+    for (let i = 0; i < 3; i++) {
+      const callOpts = throttledFetch.mock.calls[i][1] as FetchCallOptions;
+      expect(callOpts.headers['X-Machine-Session-Id']).toBe(sessionId);
+    }
+
+    expect(events.some(e => e.type === 'content_block_delta' && e.delta?.text === 'recovered')).toBe(true);
+    expect(events[events.length - 1]?.type).toBe('message_stop');
   });
 });
