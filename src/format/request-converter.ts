@@ -54,6 +54,7 @@ export function convertAnthropicToGoogle(anthropicRequest: any): StandardRequest
     const isThinking = isThinkingModel(modelName);
 
     const googleRequest: any = {
+        model: modelName,
         contents: [],
         generationConfig: {}
     };

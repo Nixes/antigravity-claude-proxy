@@ -65,6 +65,7 @@ export function buildCloudCodeRequestFromStandard(
 ): Record<string, unknown> {
   // Deep clone to avoid mutating the original
   const googleRequest: any = JSON.parse(JSON.stringify(standardRequest));
+  delete googleRequest.model;
   
   googleRequest.sessionId = deriveSessionId(null, accountEmail);
 
@@ -107,7 +108,11 @@ export function buildCloudCodeRequest(
   accountEmail: string
 ): Record<string, unknown> {
   const standardRequest = convertAnthropicToGoogle(anthropicRequest);
-  return buildCloudCodeRequestFromStandard(standardRequest, projectId, accountEmail);
+  return buildCloudCodeRequestFromStandard(
+    { ...standardRequest, model: standardRequest.model || anthropicRequest.model },
+    projectId,
+    accountEmail
+  );
 }
 
 export function buildHeaders(
