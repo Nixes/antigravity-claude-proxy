@@ -64,7 +64,7 @@ A proxy server that exposes an **Anthropic and OpenAI-compatible API** backed by
 
 ## Prerequisites
 
-- **Node.js** 18 or later
+- **Node.js** 22.19.0 or later
 - **Antigravity** installed (for single-account mode) OR Google account(s) for multi-account mode
 
 ---
